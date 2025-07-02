@@ -50,6 +50,10 @@ FX_DF = pd.DataFrame(FX_RATES_DATA)
 # --- Streamlit App ---
 st.set_page_config(layout="wide")
 st.title("Plataforma de Análisis de Datos de Hotel")
+st.subheader("Desarrollado por Julian Yamid Torres Torres")
+st.write("Whatsapp: +57 3004289163")
+st.write("E-mail: julik_100@hotmail.com")
+
 
 st.markdown("---")
 st.sidebar.header("Navegación")
