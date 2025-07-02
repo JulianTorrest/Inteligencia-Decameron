@@ -736,7 +736,7 @@ elif section == "6. Análisis de Escenarios y Recomendaciones":
     * **Marketing estratégico para destinos netos:** Dirigir campañas de marketing a los destinos con mayor `Ingreso_Neto`, incluso si su `Ingreso Total` no es el más alto, ya que son más rentables para el negocio.
     """)
 
-st.markdown("---")
+    st.markdown("---")
     st.subheader("6.3. Escenario 3: Impacto de la Estacionalidad en Ingresos y Room Nights")
     st.write("Analizar las tendencias mensuales para entender la estacionalidad en ingresos y noches de habitación, crucial para la planificación operativa y de marketing.")
     
@@ -942,7 +942,7 @@ st.markdown("---")
     df_corporate = df_transformed[df_transformed['Tipo Cliente'] == 'Corporativo'].groupby('Destino').agg(
         Total_Reservas=('ID Cliente', 'count'), # Count of bookings from corporate
         Ingreso_Corporativo=('Ingreso Total', 'sum'),
-        Avg_Room_Nights=('Room Nights', 'mean')
+        Avg_Room_Nights=('# Room Nights', 'mean') # Changed to '# Room Nights' for consistency
     ).reset_index()
     df_corporate = df_corporate.sort_values(by='Ingreso_Corporativo', ascending=False)
 
