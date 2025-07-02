@@ -1,3 +1,34 @@
+You're absolutely right to point that out\! It seems like some of the plots and dataframes in scenarios 6.3 and 6.4 are appearing empty, which shouldn't be the case given the data.
+
+Let's troubleshoot this. The most common reason for empty plots or dataframes when the code *looks* correct is that the **`df_transformed` DataFrame, after all the filtering and transformations, might not contain the expected data** for those specific scenarios.
+
+Given the code you provided, the most likely culprits for empty visuals in 6.3 and 6.4 are:
+
+### **For Scenario 6.3: Impacto de la Estacionalidad en Ingresos y Room Nights**
+
+The issue here is almost certainly related to the **`Mes Nombre Facturacion` column**. While the correction for `# Room Nights` was good, the categorization of months might be causing a problem if some month names aren't present in the data, or if there's a mix of languages (e.g., 'January' instead of 'Enero').
+
+Let's refine how `Mes Nombre Facturacion` is created to ensure it's always consistent and correctly categorized for plotting.
+
+### **For Scenario 6.4: Rendimiento de Agencias de Viaje vs. Directo**
+
+This scenario relies on filtering `Tipo Cliente` for `'Agencias de Viaje'` and `'Cliente Final'`. If these exact strings are not present in your `Tipo Cliente` column, the `df_filtered` will be empty, leading to empty visualizations. We need to **verify the exact values in the `Tipo Cliente` column**.
+
+-----
+
+### Proposed Fixes and Code Adjustments:
+
+Here's how to adjust the relevant parts of your code to ensure these scenarios display correctly. I'll provide the complete revised code for scenarios 6.3 and 6.4.
+
+**1. Ensure correct month names in Scenario 6.3:**
+We'll explicitly use the `dt.strftime('%B')` method, which gives the full locale-specific month name. It's crucial that your environment's locale is set to Spanish for this to consistently produce "Enero", "Febrero", etc. If not, you might need a custom mapping. For now, assuming a Spanish locale is sufficient.
+
+**2. Verify `Tipo Cliente` values in Scenario 6.4:**
+I'll add a small check to see what unique values are actually in `Tipo Cliente` to help debug if the issue persists after the change. This will confirm the exact strings you should be filtering on.
+
+-----
+
+````python
 import streamlit as st
 import pandas as pd
 import requests
@@ -5,6 +36,25 @@ from io import BytesIO
 import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np # For numerical operations, especially with NaN
+import locale # For setting locale to ensure correct month names
+
+# Set locale for consistent month names (e.g., 'Enero', 'Febrero')
+# This is important for .dt.strftime('%B') to work as expected for Spanish month names
+# Try a few common Spanish locales if one doesn't work on your system
+try:
+    locale.setlocale(locale.LC_ALL, 'es_ES.UTF-8')
+except locale.Error:
+    try:
+        locale.setlocale(locale.LC_ALL, 'es_CO.UTF-8') # For Colombia specifically
+    except locale.Error:
+        st.warning("Could not set locale to Spanish. Month names might appear in English or need manual mapping.")
+        # Fallback if locale cannot be set, or provide a manual mapping
+        MONTH_NAME_MAP = {
+            1: 'Enero', 2: 'Febrero', 3: 'Marzo', 4: 'Abril', 5: 'Mayo', 6: 'Junio',
+            7: 'Julio', 8: 'Agosto', 9: 'Septiembre', 10: 'Octubre', 11: 'Noviembre', 12: 'Diciembre'
+        }
+        # You'd use this in the df transformation: df['Mes Nombre Facturacion'] = df['Mes Facturacion'].map(MONTH_NAME_MAP)
+
 
 # --- Configuration ---
 # The raw GitHub URL for your Excel file
@@ -84,7 +134,14 @@ def load_and_prepare_data(url, fx_df_param):
         # Add 'Year' and 'Month' columns for temporal analysis
         df['Año Facturacion'] = df['Fecha Facturacion'].dt.year.fillna(0).astype(int)
         df['Mes Facturacion'] = df['Fecha Facturacion'].dt.month.fillna(0).astype(int)
-        df['Mes Nombre Facturacion'] = df['Fecha Facturacion'].dt.strftime('%B').fillna('Desconocido') # Full month name
+        
+        # Ensure month names are correct for Spanish locale
+        # If locale.setlocale fails, you might need a manual map
+        if 'MONTH_NAME_MAP' in globals(): # Check if the fallback map was created
+            df['Mes Nombre Facturacion'] = df['Mes Facturacion'].map(MONTH_NAME_MAP).fillna('Desconocido')
+        else:
+            df['Mes Nombre Facturacion'] = df['Fecha Facturacion'].dt.strftime('%B').fillna('Desconocido') # Full month name
+
 
         # Create 'Aerolinea_Display' for plotting if 'Aerolinea' has NaNs
         df['Aerolinea_Display'] = df['Aerolinea'].fillna('No Definido')
@@ -158,6 +215,7 @@ def load_and_prepare_data(url, fx_df_param):
             total_sales_2024_for_dist = monthly_sales_2024.sum()
             if total_sales_2024_for_dist > 0:
                 monthly_distribution_ratio = monthly_sales_2024 / total_sales_2024_for_dist
+                # Reindex to ensure all 12 months are present, even if some have no sales
                 estimated_monthly_budget_2025 = monthly_distribution_ratio.reindex(range(1, 13), fill_value=0) * budget_2025_estimated
                 st.session_state['estimated_monthly_budget_2025'] = estimated_monthly_budget_2025.values
                 st.session_state['budget_2025_total'] = budget_2025_estimated
@@ -537,7 +595,7 @@ print(df)
     st.dataframe(df_python_original)
 
 
-    st.markdown("##### A. ¿Qué hace este código paso a paso?")
+    st.markdown("##### B. ¿Qué hace este código paso a paso?")
     st.markdown("""
     Este código Python utiliza la librería `pandas` para realizar un análisis de **crecimiento porcentual de ventas** entre dos años (2024 y 2025) para un conjunto de clientes.
 
@@ -548,7 +606,7 @@ print(df)
         * Una columna 'Ventas_2024' con los montos de ventas para cada cliente en el año 2024.
         * Una columna 'Ventas_2025' con los montos de ventas para cada cliente en el año 2025.
     3.  **`df['Crecimiento (%)'] = ...`**: Calcula el **crecimiento porcentual** de las ventas para cada cliente y almacena el resultado en una nueva columna llamada 'Crecimiento (%)'. La fórmula utilizada es: `((Ventas_2025 - Ventas_2024) / Ventas_2024) * 100`.
-    4.  **`print(df)`**: Imprime en la consola el DataFrame completo, incluyendo la nueva columna 'Crecimiento (%)', mostrando los datos originales junto con el crecimiento calculado para cada cliente.
+    4.  **`print(df)`**: Imprime en la consola el DataFrame completo, incluyendo la nueva columna 'Crecimiento (%)', mostrando los datos originales junto con el crecimiento calculado para cada uno.
 
     **En resumen:** El código carga datos de ventas de 2024 y 2025 para varios clientes y calcula el porcentaje de crecimiento (o decrecimiento) de las ventas de 2025 respecto a 2024 para cada uno.
     """)
@@ -743,7 +801,7 @@ elif section == "6. Análisis de Escenarios y Recomendaciones":
     # Analysis
     df_monthly_trends = df_transformed.groupby('Mes Nombre Facturacion').agg(
         Ingreso_Total=('Ingreso Total', 'sum'),
-        Room_Nights=('# Room Nights', 'sum') # CORRECTED: Changed 'Room_Nights' to '# Room Nights'
+        Room_Nights=('# Room Nights', 'sum')
     ).reset_index()
 
     # Order months correctly for plotting
@@ -751,28 +809,36 @@ elif section == "6. Análisis de Escenarios y Recomendaciones":
         'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
         'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
     ]
+    # Ensure all month names are in the DataFrame or the category definition matches.
+    # It's good to re-check actual month names in df_transformed if problem persists.
+    # st.write(f"Unique month names in data: {df_transformed['Mes Nombre Facturacion'].unique().tolist()}") # Debugging line
+
     df_monthly_trends['Mes Nombre Facturacion'] = pd.Categorical(df_monthly_trends['Mes Nombre Facturacion'], categories=month_order, ordered=True)
     df_monthly_trends = df_monthly_trends.sort_values('Mes Nombre Facturacion')
 
-    fig_monthly_ingreso = px.line(
-        df_monthly_trends,
-        x='Mes Nombre Facturacion',
-        y='Ingreso_Total',
-        title='Tendencia Mensual de Ingreso Total',
-        markers=True,
-        labels={'Ingreso_Total': 'Ingreso Total ($)'}
-    )
-    st.plotly_chart(fig_monthly_ingreso, use_container_width=True)
+    if df_monthly_trends.empty:
+        st.warning("No hay datos de tendencias mensuales disponibles para el análisis de estacionalidad. Revisa los datos de 'Fecha Facturacion'.")
+    else:
+        fig_monthly_ingreso = px.line(
+            df_monthly_trends,
+            x='Mes Nombre Facturacion',
+            y='Ingreso_Total',
+            title='Tendencia Mensual de Ingreso Total',
+            markers=True,
+            labels={'Ingreso_Total': 'Ingreso Total ($)'}
+        )
+        st.plotly_chart(fig_monthly_ingreso, use_container_width=True)
 
-    fig_monthly_room_nights = px.line(
-        df_monthly_trends,
-        x='Mes Nombre Facturacion',
-        y='Room_Nights',
-        title='Tendencia Mensual de # Room Nights',
-        markers=True,
-        labels={'Room_Nights': 'Número de Room Nights'}
-    )
-    st.plotly_chart(fig_monthly_room_nights, use_container_width=True)
+        fig_monthly_room_nights = px.line(
+            df_monthly_trends,
+            x='Mes Nombre Facturacion',
+            y='Room_Nights',
+            title='Tendencia Mensual de # Room Nights',
+            markers=True,
+            labels={'Room_Nights': 'Número de Room Nights'}
+        )
+        st.plotly_chart(fig_monthly_room_nights, use_container_width=True)
+        st.dataframe(df_monthly_trends)
 
     st.markdown("""
     **Recomendaciones:**
@@ -784,23 +850,33 @@ elif section == "6. Análisis de Escenarios y Recomendaciones":
     st.subheader("6.4. Escenario 4: Rendimiento de Agencias de Viaje vs. Directo")
     st.write("Comparar el rendimiento de los clientes que reservan a través de agencias de viaje versus los que reservan directamente.")
     
+    # Debugging: Check unique values in 'Tipo Cliente'
+    # st.write(f"Unique 'Tipo Cliente' values: {df_transformed['Tipo Cliente'].unique().tolist()}")
+
     # Analysis: Assume 'Agencias de Viaje' is a 'Tipo Cliente', direct could be 'Cliente Final'
-    df_agency_vs_direct = df_transformed[df_transformed['Tipo Cliente'].isin(['Agencias de Viaje', 'Cliente Final'])].groupby('Tipo Cliente').agg(
+    # Ensure these exact strings exist in your data.
+    relevant_client_types = ['Agencias de Viaje', 'Cliente Final'] # Define clearly
+    
+    # Filter the DataFrame for these specific client types
+    df_agency_vs_direct = df_transformed[df_transformed['Tipo Cliente'].isin(relevant_client_types)].groupby('Tipo Cliente').agg(
         Ingreso_Total=('Ingreso Total', 'sum'),
         Numero_Clientes=('ID Cliente', 'nunique'),
         Total_Room_Nights=('# Room Nights', 'sum')
     ).reset_index()
 
-    fig_agency_direct_revenue = px.bar(
-        df_agency_vs_direct,
-        x='Tipo Cliente',
-        y='Ingreso_Total',
-        title='Ingreso Total: Agencias de Viaje vs. Cliente Final',
-        labels={'Ingreso_Total': 'Ingreso Total ($)'},
-        color='Tipo Cliente'
-    )
-    st.plotly_chart(fig_agency_direct_revenue, use_container_width=True)
-    st.dataframe(df_agency_vs_direct)
+    if df_agency_vs_direct.empty:
+        st.warning(f"No hay datos disponibles para 'Agencias de Viaje' o 'Cliente Final'. Revisa los valores únicos en la columna 'Tipo Cliente' de tu dataset. Los valores esperados son: {relevant_client_types}.")
+    else:
+        fig_agency_direct_revenue = px.bar(
+            df_agency_vs_direct,
+            x='Tipo Cliente',
+            y='Ingreso_Total',
+            title='Ingreso Total: Agencias de Viaje vs. Cliente Final',
+            labels={'Ingreso_Total': 'Ingreso Total ($)'},
+            color='Tipo Cliente'
+        )
+        st.plotly_chart(fig_agency_direct_revenue, use_container_width=True)
+        st.dataframe(df_agency_vs_direct)
 
     st.markdown("""
     **Recomendaciones:**
@@ -962,3 +1038,5 @@ elif section == "6. Análisis de Escenarios y Recomendaciones":
     * **Programas de fidelización corporativos:** Implementar programas de lealtad diseñados específicamente para empresas, ofreciendo tarifas preferenciales, beneficios exclusivos para sus empleados o espacios para eventos.
     * **Canales de venta directa B2B:** Fortalecer los canales de venta directa a empresas, asignando ejecutivos de cuenta que gestionen las relaciones y comprendan las necesidades específicas del sector corporativo (ej. viajes de negocios, eventos, capacitaciones).
     """)
+
+````
