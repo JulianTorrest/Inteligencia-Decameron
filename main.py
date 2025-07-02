@@ -40,7 +40,8 @@ section = st.sidebar.radio("Ir a la Sección:",
                             "2. Transformación y Análisis de Datos",
                             "3. Dashboard Ejecutivo",
                             "4. Pensamiento Analítico (SQL & Python)",
-                            "5. Pensamiento Estratégico (Data Sources)"])
+                            "5. Pensamiento Estratégico (Data Sources)",
+                            "6. Análisis de Escenarios y Recomendaciones"]) # New Section
 
 # --- Data Loading and Initial Preparation (Common to all sections) ---
 st.write(f"Cargando archivo desde: [{GITHUB_EXCEL_URL}]({GITHUB_EXCEL_URL})")
@@ -143,6 +144,9 @@ def load_and_prepare_data(url, fx_df_param):
             return 0 # No commission if data is missing or not found in table
 
         df['Comision'] = df.apply(calculate_commission, axis=1)
+        
+        # Calculate Net Income (Ingreso Neto)
+        df['Ingreso Neto'] = df['Ingreso Total'] - df['Comision']
 
         # E. Distribución de presupuesto de facturación 2025 (Bonus Opcional)
         # This part calculates total_sales_2024 and estimated_monthly_budget_2025
@@ -238,7 +242,7 @@ if section == "1. EDA":
         ("Ingreso Total por Destino", px.bar(df_transformed.groupby('Destino')['Ingreso Total'].sum().reset_index(), x='Destino', y='Ingreso Total', title='Ingreso Total por Destino', color='Destino')),
         ("Número de Room Nights por Plan", px.bar(df_transformed.groupby('Plan')['# Room Nights'].sum().reset_index(), x='Plan', y='# Room Nights', title='Número de Room Nights por Plan', color='Plan')),
         ("Distribución de Clientes por Tipo de Cliente", px.pie(df_transformed, names='Tipo Cliente', title='Distribución Porcentual de Clientes por Tipo')),
-        ("Ingreso Total por Aerolínea", px.bar(df_transformed.groupby('Aerolinea_Display')['Ingreso Total'].sum().reset_index(), x='Aerolinea_Display', y='Ingreso Total', title='Ingreso Total por Aerolínea', color='Aerolinea_Display')),
+        ("Ingreso Total por Aerolinea", px.bar(df_transformed.groupby('Aerolinea_Display')['Ingreso Total'].sum().reset_index(), x='Aerolinea_Display', y='Ingreso Total', title='Ingreso Total por Aerolinea', color='Aerolinea_Display')),
         ("Valor Total por País", px.bar(df_transformed.groupby('Pais')['Valor Total'].sum().reset_index(), x='Pais', y='Valor Total', title='Valor Total de Ventas por País', color='Pais')),
         ("Tendencia Mensual de Ingreso Total por Fecha de Facturación", px.line(df_transformed.set_index('Fecha Facturacion')['Ingreso Total'].resample('M').sum().reset_index(), x='Fecha Facturacion', y='Ingreso Total', title='Tendencia Mensual de Ingreso Total', markers=True)),
         ("Relación entre Room Nights e Ingreso Total", px.scatter(df_transformed, x='# Room Nights', y='Ingreso Total', title='Relación entre Noches de Habitación e Ingreso Total', hover_name='ID Cliente')),
@@ -670,4 +674,291 @@ elif section == "5. Pensamiento Estratégico (Data Sources)":
     **Plataformas de ML** (Google Cloud AI Platform - Modelos predictivos/prescriptivos)
 
     Este enfoque asegura una **única fuente de verdad** para los datos, facilita la trazabilidad y permite análisis avanzados.
+    """)
+
+# --- NEW SECTION: 6. ANÁLISIS DE ESCENARIOS Y RECOMENDACIONES ---
+elif section == "6. Análisis de Escenarios y Recomendaciones":
+    st.header("6. Análisis de Escenarios y Recomendaciones")
+    st.write("Esta sección presenta análisis de escenarios basados en los datos y ofrece recomendaciones estratégicas para la toma de decisiones.")
+
+    st.markdown("---")
+    st.subheader("6.1. Escenario 1: Optimización de Ingresos por Segmento y Plan")
+    st.write("Identificar qué combinaciones de **Tipo de Cliente** y **Plan** generan más ingresos y dónde hay oportunidades de crecimiento.")
+    
+    # Analysis
+    df_segment_plan_revenue = df_transformed.groupby(['Tipo Cliente', 'Plan'])['Ingreso Total'].sum().reset_index()
+    df_segment_plan_revenue = df_segment_plan_revenue.sort_values(by='Ingreso Total', ascending=False)
+
+    fig_segment_plan = px.bar(
+        df_segment_plan_revenue,
+        x='Tipo Cliente',
+        y='Ingreso Total',
+        color='Plan',
+        title='Ingreso Total por Tipo de Cliente y Plan',
+        labels={'Ingreso Total': 'Ingreso Total ($)'},
+        barmode='group'
+    )
+    st.plotly_chart(fig_segment_plan, use_container_width=True)
+    st.dataframe(df_segment_plan_revenue.head(5))
+
+    st.markdown("""
+    **Recomendaciones:**
+    * **Foco en segmentos de alto valor:** Reforzar las estrategias de marketing y ventas para los **Tipo de Cliente** y **Plan** que actualmente generan los mayores ingresos. Por ejemplo, si "Agencias de Viaje" con "Solo Hotel + Vuelo" son líderes, invertir más en esta relación y en la calidad de estos paquetes.
+    * **Explorar upselling/cross-selling:** Para segmentos que tienen un buen volumen de `Room Nights` pero un `Ingreso Total` relativamente bajo, identificar oportunidades para ofrecer planes premium o servicios adicionales que aumenten el valor promedio por reserva.
+    """)
+
+    st.markdown("---")
+    st.subheader("6.2. Escenario 2: Rentabilidad por Destino (Neto de Comisiones)")
+    st.write("Evaluar la rentabilidad real de cada destino después de deducir las comisiones, para identificar los más y menos eficientes.")
+    
+    # Analysis
+    df_destination_profit = df_transformed.groupby('Destino').agg(
+        Total_Ingreso=('Ingreso Total', 'sum'),
+        Total_Comision=('Comision', 'sum'),
+        Ingreso_Neto=('Ingreso Neto', 'sum')
+    ).reset_index()
+    df_destination_profit = df_destination_profit.sort_values(by='Ingreso_Neto', ascending=False)
+
+    fig_dest_profit = px.bar(
+        df_destination_profit,
+        x='Destino',
+        y=['Total_Ingreso', 'Ingreso_Neto'],
+        barmode='group',
+        title='Ingreso Total vs. Ingreso Neto por Destino',
+        labels={'value': 'Monto ($)', 'variable': 'Tipo de Ingreso'}
+    )
+    st.plotly_chart(fig_dest_profit, use_container_width=True)
+    st.dataframe(df_destination_profit)
+
+    st.markdown("""
+    **Recomendaciones:**
+    * **Optimización de acuerdos de comisión:** Para destinos con un alto `Total_Ingreso` pero un `Ingreso_Neto` comparativamente bajo (debido a altas comisiones), renegociar los términos con las aerolíneas o agencias para mejorar los márgenes de rentabilidad.
+    * **Marketing estratégico para destinos netos:** Dirigir campañas de marketing a los destinos con mayor `Ingreso_Neto`, incluso si su `Ingreso Total` no es el más alto, ya que son más rentables para el negocio.
+    """)
+
+    st.markdown("---")
+    st.subheader("6.3. Escenario 3: Impacto de la Estacionalidad en Ingresos y Room Nights")
+    st.write("Analizar las tendencias mensuales para entender la estacionalidad en ingresos y noches de habitación, crucial para la planificación operativa y de marketing.")
+    
+    # Analysis
+    df_monthly_trends = df_transformed.groupby('Mes Nombre Facturacion').agg(
+        Ingreso_Total=('Ingreso Total', 'sum'),
+        Room_Nights=('Room Nights', 'sum')
+    ).reset_index()
+
+    # Order months correctly for plotting
+    month_order = [
+        'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+        'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+    ]
+    df_monthly_trends['Mes Nombre Facturacion'] = pd.Categorical(df_monthly_trends['Mes Nombre Facturacion'], categories=month_order, ordered=True)
+    df_monthly_trends = df_monthly_trends.sort_values('Mes Nombre Facturacion')
+
+    fig_monthly_ingreso = px.line(
+        df_monthly_trends,
+        x='Mes Nombre Facturacion',
+        y='Ingreso_Total',
+        title='Tendencia Mensual de Ingreso Total',
+        markers=True,
+        labels={'Ingreso_Total': 'Ingreso Total ($)'}
+    )
+    st.plotly_chart(fig_monthly_ingreso, use_container_width=True)
+
+    fig_monthly_room_nights = px.line(
+        df_monthly_trends,
+        x='Mes Nombre Facturacion',
+        y='Room_Nights',
+        title='Tendencia Mensual de # Room Nights',
+        markers=True,
+        labels={'Room_Nights': 'Número de Room Nights'}
+    )
+    st.plotly_chart(fig_monthly_room_nights, use_container_width=True)
+
+    st.markdown("""
+    **Recomendaciones:**
+    * **Estrategias de precios dinámicos:** Implementar modelos de precios dinámicos que ajusten las tarifas según la demanda estacional, maximizando ingresos durante picos y estimulando la demanda en temporadas bajas.
+    * **Campañas de marketing anticipadas:** Lanzar campañas de marketing dirigidas a la venta anticipada para temporadas altas y paquetes atractivos para temporadas bajas, diversificando el flujo de ingresos a lo largo del año.
+    """)
+
+    st.markdown("---")
+    st.subheader("6.4. Escenario 4: Rendimiento de Agencias de Viaje vs. Directo")
+    st.write("Comparar el rendimiento de los clientes que reservan a través de agencias de viaje versus los que reservan directamente.")
+    
+    # Analysis: Assume 'Agencias de Viaje' is a 'Tipo Cliente', direct could be 'Cliente Final'
+    df_agency_vs_direct = df_transformed[df_transformed['Tipo Cliente'].isin(['Agencias de Viaje', 'Cliente Final'])].groupby('Tipo Cliente').agg(
+        Ingreso_Total=('Ingreso Total', 'sum'),
+        Numero_Clientes=('ID Cliente', 'nunique'),
+        Total_Room_Nights=('# Room Nights', 'sum')
+    ).reset_index()
+
+    fig_agency_direct_revenue = px.bar(
+        df_agency_vs_direct,
+        x='Tipo Cliente',
+        y='Ingreso_Total',
+        title='Ingreso Total: Agencias de Viaje vs. Cliente Final',
+        labels={'Ingreso_Total': 'Ingreso Total ($)'},
+        color='Tipo Cliente'
+    )
+    st.plotly_chart(fig_agency_direct_revenue, use_container_width=True)
+    st.dataframe(df_agency_vs_direct)
+
+    st.markdown("""
+    **Recomendaciones:**
+    * **Incentivar reserva directa:** Si los clientes directos tienen un valor promedio más alto o menores costos de adquisición (sin comisiones), invertir en la optimización del sitio web, programas de lealtad y ofertas exclusivas para fomentar más reservas directas.
+    * **Fortalecer alianzas con agencias:** Si las agencias de viaje aportan un volumen significativo de ingresos, mantener y fortalecer las relaciones con las agencias clave, ofreciéndoles soporte, capacitación y herramientas para vender los paquetes del hotel de manera efectiva.
+    """)
+
+    st.markdown("---")
+    st.subheader("6.5. Escenario 5: Análisis de Concentración por País de Origen")
+    st.write("Identificar si los ingresos están fuertemente concentrados en pocos países de origen y evaluar el riesgo/oportunidad de diversificación.")
+    
+    # Analysis
+    df_country_origin_revenue = df_transformed.groupby('Pais')['Ingreso Total'].sum().reset_index()
+    df_country_origin_revenue['Porcentaje'] = (df_country_origin_revenue['Ingreso Total'] / df_country_origin_revenue['Ingreso Total'].sum()) * 100
+    df_country_origin_revenue = df_country_origin_revenue.sort_values(by='Ingreso Total', ascending=False)
+
+    fig_country_pie = px.pie(
+        df_country_origin_revenue.head(5), # Top 5 for clarity in pie chart
+        values='Ingreso Total',
+        names='Pais',
+        title='Distribución de Ingresos por País de Origen (Top 5)',
+        hole=0.3
+    )
+    st.plotly_chart(fig_country_pie, use_container_width=True)
+    st.dataframe(df_country_origin_revenue.head(7)) # Show top 7 in table
+
+    st.markdown("""
+    **Recomendaciones:**
+    * **Diversificación de mercados:** Si uno o dos países dominan una gran parte de los ingresos, desarrollar planes de marketing y ventas para penetrar o expandirse en mercados de origen menos explotados para reducir la dependencia y el riesgo.
+    * **Consolidación en mercados clave:** Continuar invirtiendo en los países de origen principales, pero buscando eficiencias en la adquisición de clientes y mejorando la experiencia para mantener su lealtad y maximizar el valor de vida del cliente.
+    """)
+
+    st.markdown("---")
+    st.subheader("6.6. Escenario 6: Identificación de Oportunidades en Planes 'Solo Hotel'")
+    st.write("Analizar el potencial de upselling para clientes que reservan 'Solo Hotel', identificando oportunidades para ofrecer vuelos o paquetes carreteros.")
+    
+    # Analysis
+    df_solo_hotel = df_transformed[df_transformed['Plan'] == 'Solo Hotel'].groupby('Destino').agg(
+        Total_Clientes=('ID Cliente', 'nunique'),
+        Ingreso_Solo_Hotel=('Ingreso Total', 'sum')
+    ).reset_index()
+    df_solo_hotel = df_solo_hotel.sort_values(by='Ingreso_Solo_Hotel', ascending=False)
+
+    fig_solo_hotel_dest = px.bar(
+        df_solo_hotel,
+        x='Destino',
+        y='Ingreso_Solo_Hotel',
+        title='Ingreso por Plan "Solo Hotel" por Destino',
+        labels={'Ingreso_Solo_Hotel': 'Ingreso Solo Hotel ($)'},
+        color='Destino'
+    )
+    st.plotly_chart(fig_solo_hotel_dest, use_container_width=True)
+    st.dataframe(df_solo_hotel)
+
+    st.markdown("""
+    **Recomendaciones:**
+    * **Paquetes integrados y promociones:** Para reservas de "Solo Hotel", ofrecer proactivamente paquetes que incluyan transporte (vuelo/carretero) o actividades, especialmente para destinos donde el volumen de "Solo Hotel" es alto. Crear promociones específicas para la adición de estos servicios.
+    * **Comunicación post-reserva:** Implementar campañas de email marketing o notificaciones push post-reserva (pero pre-check-in) a clientes con plan "Solo Hotel", destacando los beneficios de añadir transporte o excursiones, facilitando la conversión.
+    """)
+
+    st.markdown("---")
+    st.subheader("6.7. Escenario 7: Eficiencia de Room Nights por Cliente")
+    st.write("Analizar el promedio de noches de habitación por cliente para identificar patrones de estancia y oportunidades para extender la duración de las visitas.")
+    
+    # Analysis
+    df_avg_room_nights = df_transformed.groupby('ID Cliente')['# Room Nights'].sum().reset_index()
+    avg_room_nights_per_customer = df_avg_room_nights['# Room Nights'].mean()
+    
+    fig_hist_room_nights = px.histogram(
+        df_avg_room_nights,
+        x='# Room Nights',
+        nbins=20,
+        title=f'Distribución de # Room Nights por Cliente (Promedio: {avg_room_nights_per_customer:.2f})',
+        labels={'# Room Nights': 'Total Room Nights por Cliente'}
+    )
+    st.plotly_chart(fig_hist_room_nights, use_container_width=True)
+    st.write(f"**Promedio de Room Nights por Cliente:** {avg_room_nights_per_customer:.2f}")
+
+    st.markdown("""
+    **Recomendaciones:**
+    * **Ofertas de extensión de estancia:** Dirigir promociones específicas a clientes que reservan estancias cortas (por ejemplo, 1-3 noches) para incentivarlos a extender su visita, como "quédate 4 noches, paga 3" o descuentos en días adicionales.
+    * **Análisis de segmentos de alta/baja estancia:** Profundizar el análisis para entender qué tipos de clientes (por `Tipo Cliente`, `País`) tienden a tener estancias más cortas o más largas y personalizar las ofertas en consecuencia.
+    """)
+
+    st.markdown("---")
+    st.subheader("6.8. Escenario 8: Desempeño de Aerolíneas Socias")
+    st.write("Evaluar qué aerolíneas asociadas contribuyen más a los ingresos, especialmente para planes que incluyen vuelo, y cómo optimizar estas alianzas.")
+    
+    # Analysis
+    df_airline_revenue = df_transformed.groupby('Aerolinea_Display')['Ingreso Total'].sum().reset_index()
+    df_airline_revenue = df_airline_revenue.sort_values(by='Ingreso Total', ascending=False)
+
+    fig_airline_revenue = px.bar(
+        df_airline_revenue.head(10), # Show top 10 for clarity
+        x='Aerolinea_Display',
+        y='Ingreso Total',
+        title='Ingreso Total por Aerolínea (Top 10)',
+        labels={'Ingreso Total': 'Ingreso Total ($)', 'Aerolinea_Display': 'Aerolínea'},
+        color='Aerolinea_Display'
+    )
+    st.plotly_chart(fig_airline_revenue, use_container_width=True)
+    st.dataframe(df_airline_revenue.head(10))
+
+    st.markdown("""
+    **Recomendaciones:**
+    * **Fortalecer alianzas estratégicas:** Priorizar y profundizar las relaciones con las aerolíneas que demuestran ser las mayores generadoras de ingresos, buscando acuerdos de marketing conjuntos o tarifas preferenciales para paquetes.
+    * **Explorar nuevas rutas/aerolíneas:** Para destinos con bajo volumen de paquetes con vuelo, investigar la posibilidad de establecer alianzas con nuevas aerolíneas o promocionar rutas existentes para aumentar la accesibilidad y el flujo de clientes.
+    """)
+
+    st.markdown("---")
+    st.subheader("6.9. Escenario 9: Potencial de Crecimiento en Mercados Emisivos")
+    st.write("Evaluar el rendimiento de los mercados emisivos (clientes de un país diferente al destino) y el potencial de expansión.")
+    
+    # Analysis
+    df_mercado = df_transformed.groupby('Mercado')['Ingreso Total'].sum().reset_index()
+    df_mercado_detail = df_transformed[df_transformed['Mercado'] == 'Emisivo'].groupby(['Pais', 'Destino'])['Ingreso Total'].sum().reset_index()
+    df_mercado_detail = df_mercado_detail.sort_values(by='Ingreso Total', ascending=False)
+
+    fig_mercado_dist = px.pie(
+        df_mercado,
+        values='Ingreso Total',
+        names='Mercado',
+        title='Distribución de Ingresos por Tipo de Mercado',
+        hole=0.3
+    )
+    st.plotly_chart(fig_mercado_dist, use_container_width=True)
+
+    st.markdown("""
+    **Recomendaciones:**
+    * **Inversión en marketing internacional:** Si el mercado emisivo representa una porción significativa, aumentar la inversión en marketing digital y presencia en ferias turísticas internacionales dirigidas a los países emisores clave.
+    * **Ofertas personalizadas para mercados emisivos:** Desarrollar paquetes y promociones específicas que se adapten a las preferencias culturales y patrones de viaje de los clientes de los mercados emisivos más importantes.
+    """)
+
+    st.markdown("---")
+    st.subheader("6.10. Escenario 10: Optimización de Estrategias para Clientes Corporativos")
+    st.write("Analizar el comportamiento y el valor de los clientes 'Corporativo' para diseñar estrategias que maximicen este segmento.")
+    
+    # Analysis
+    df_corporate = df_transformed[df_transformed['Tipo Cliente'] == 'Corporativo'].groupby('Destino').agg(
+        Total_Reservas=('ID Cliente', 'count'), # Count of bookings from corporate
+        Ingreso_Corporativo=('Ingreso Total', 'sum'),
+        Avg_Room_Nights=('Room Nights', 'mean')
+    ).reset_index()
+    df_corporate = df_corporate.sort_values(by='Ingreso_Corporativo', ascending=False)
+
+    fig_corporate_revenue = px.bar(
+        df_corporate,
+        x='Destino',
+        y='Ingreso_Corporativo',
+        title='Ingreso Total de Clientes Corporativos por Destino',
+        labels={'Ingreso_Corporativo': 'Ingreso Corporativo ($)'},
+        color='Destino'
+    )
+    st.plotly_chart(fig_corporate_revenue, use_container_width=True)
+    st.dataframe(df_corporate)
+
+    st.markdown("""
+    **Recomendaciones:**
+    * **Programas de fidelización corporativos:** Implementar programas de lealtad diseñados específicamente para empresas, ofreciendo tarifas preferenciales, beneficios exclusivos para sus empleados o espacios para eventos.
+    * **Canales de venta directa B2B:** Fortalecer los canales de venta directa a empresas, asignando ejecutivos de cuenta que gestionen las relaciones y comprendan las necesidades específicas del sector corporativo (ej. viajes de negocios, eventos, capacitaciones).
     """)
