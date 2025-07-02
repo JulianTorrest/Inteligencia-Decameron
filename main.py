@@ -23,13 +23,16 @@ def load_data(url):
         return df
     except requests.exceptions.RequestException as e:
         st.error(f"Error al descargar el archivo: {e}. Por favor, verifica la URL.")
+        st.stop() # Stop execution if file cannot be downloaded
         return None
     except Exception as e:
         st.error(f"Error al leer el archivo Excel: {e}. Asegúrate de que es un archivo .xlsx válido.")
+        st.stop() # Stop execution if file cannot be read
         return None
 
 df = load_data(GITHUB_EXCEL_URL)
 
+# Only proceed if df was loaded successfully
 if df is not None:
     st.header("1. Previsualización de los Datos")
     st.write("Las primeras 5 filas del DataFrame:")
@@ -54,17 +57,17 @@ if df is not None:
         st.write("Columnas con valores vacíos:")
         st.write(missing_values.index.tolist())
 
-    ---
+    st.markdown("---") # Corrected: Wrap --- in st.markdown()
 
     st.header("4. Opciones de Respuesta para Variables Categóricas")
     st.write("Identificando columnas categóricas y sus valores únicos.")
 
     # Define a threshold for what we consider "categorical" based on unique values
     # You can adjust this threshold (e.g., 20, 50, 100) based on your dataset's characteristics
-    UNIQUE_VALUES_THRESHOLD = 50 
+    UNIQUE_VALUES_THRESHOLD = 50
 
     categorical_cols = []
-    
+
     # Iterate through columns to identify potential categorical ones
     for col in df.columns:
         # Check if the column type is 'object' (often strings) or 'category'
@@ -93,7 +96,7 @@ if df is not None:
             st.write(options)
             st.write(f"Número de opciones únicas: **{len(options)}**")
 
-    ---
+    st.markdown("---") # Corrected: Wrap --- in st.markdown()
 
     st.header("5. Proceso Básico de Limpieza de Datos")
     st.write("A continuación, se muestra un ejemplo básico de limpieza de datos.")
