@@ -4,12 +4,10 @@ import requests
 from io import BytesIO
 import plotly.express as px
 import plotly.graph_objects as go
-import numpy as np # For numerical operations, especially with NaN
-import locale # For setting locale to ensure correct month names
+import numpy as np
+import locale
 
 # Set locale for consistent month names (e.g., 'Enero', 'Febrero')
-# This is important for .dt.strftime('%B') to work as expected for Spanish month names
-# Try a few common Spanish locales if one doesn't work on your system
 try:
     locale.setlocale(locale.LC_ALL, 'es_ES.UTF-8')
 except locale.Error:
@@ -17,31 +15,23 @@ except locale.Error:
         locale.setlocale(locale.LC_ALL, 'es_CO.UTF-8') # For Colombia specifically
     except locale.Error:
         st.warning("Could not set locale to Spanish. Month names might appear in English or need manual mapping.")
-        # Fallback if locale cannot be set, or provide a manual mapping
         MONTH_NAME_MAP = {
             1: 'Enero', 2: 'Febrero', 3: 'Marzo', 4: 'Abril', 5: 'Mayo', 6: 'Junio',
             7: 'Julio', 8: 'Agosto', 9: 'Septiembre', 10: 'Octubre', 11: 'Noviembre', 12: 'Diciembre'
         }
-        # You'd use this in the df transformation: df['Mes Nombre Facturacion'] = df['Mes Facturacion'].map(MONTH_NAME_MAP)
 
 
 # --- Configuration ---
-# The raw GitHub URL for your Excel file
 GITHUB_EXCEL_URL = "https://raw.githubusercontent.com/JulianTorrest/Inteligencia-Decameron/main/datos_hotel_final.xlsx"
-
-# Commission Table provided by the user
 COMMISSION_RATES = {
     'Colombia': {'AV': 0.08, 'LA': 0.07, 'CM': 0.06},
     'México': {'AV': 0.10, 'LA': 0.09, 'CM': 0.08},
     'Ecuador': {'AV': 0.07, 'LA': 0.06, 'CM': 0.05},
     'Perú': {'AV': 0.09, 'LA': 0.08, 'CM': 0.07}
 }
-
-# Mock FX US$ rates (as it's a separate sheet, we'll simulate it)
-# In a real scenario, you'd load this from the Excel file if it's a second sheet
 FX_RATES_DATA = {
     'Año': [2023, 2023, 2023, 2023, 2024, 2024, 2024, 2024, 2024, 2024, 2024, 2024, 2024, 2024, 2024, 2024],
-    'Mes': [1, 2, 3, 4, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], # Assuming 1-12 for months
+    'Mes': [1, 2, 3, 4, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
     'Colombia_FX': [3800, 3900, 3850, 4000, 3950, 4050, 4020, 3980, 4100, 4080, 4120, 4150, 4200, 4250, 4300, 4350],
     'México_FX': [19.5, 20.0, 19.8, 20.5, 20.2, 20.8, 20.5, 20.3, 21.0, 20.9, 21.1, 21.3, 21.5, 21.8, 22.0, 22.2]
 }
@@ -60,34 +50,26 @@ section = st.sidebar.radio("Ir a la Sección:",
                             "3. Dashboard Ejecutivo",
                             "4. Pensamiento Analítico (SQL & Python)",
                             "5. Pensamiento Estratégico (Data Sources)",
-                            "6. Análisis de Escenarios y Recomendaciones"]) # New Section
+                            "6. Análisis de Escenarios y Recomendaciones"])
 
 # --- Data Loading and Initial Preparation (Common to all sections) ---
 st.write(f"Cargando archivo desde: [{GITHUB_EXCEL_URL}]({GITHUB_EXCEL_URL})")
 
-@st.cache_data # Cache the data to avoid re-downloading on every rerun
+@st.cache_data
 def load_and_prepare_data(url, fx_df_param):
-    """
-    Loads the Excel file, performs initial cleaning, preparation,
-    and applies transformations common to all analysis sections.
-    """
     try:
         response = requests.get(url)
-        response.raise_for_status()  # Raise an HTTPError for bad responses (4xx or 5xx)
+        response.raise_for_status()
         df = pd.read_excel(BytesIO(response.content))
 
-        # --- Initial Cleaning and Type Conversion ---
-        # 1. Fill numerical NaNs with 0 (for analysis, can be adjusted)
         numeric_cols = df.select_dtypes(include=['number']).columns
         df[numeric_cols] = df[numeric_cols].fillna(0)
 
-        # 2. Fill non-numerical NaNs with 'Desconocido' (excluding 'Aerolinea')
         non_numeric_cols = df.select_dtypes(exclude=['number']).columns
         cols_to_fill_non_numeric = [col for col in non_numeric_cols if col != "Aerolinea"]
         if cols_to_fill_non_numeric:
             df[cols_to_fill_non_numeric] = df[cols_to_fill_non_numeric].fillna('Desconocido')
 
-        # 3. Standardize 'Plan' column
         plan_mapping = {
             'Solo Hotel + Carreteroo': 'Solo Hotel + Carretero',
             'Solo Hotell': 'Solo Hotel',
@@ -95,34 +77,26 @@ def load_and_prepare_data(url, fx_df_param):
         }
         df['Plan'] = df['Plan'].replace(plan_mapping)
         
-        # 4. Convert Date Columns
         for date_col in ['Fecha Facturacion', 'Fecha Check-in']:
             if date_col in df.columns:
-                df[date_col] = pd.to_datetime(df[date_col], errors='coerce') # coerce will turn invalid dates into NaT
+                df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
         
-        # Add 'Year' and 'Month' columns for temporal analysis
         df['Año Facturacion'] = df['Fecha Facturacion'].dt.year.fillna(0).astype(int)
         df['Mes Facturacion'] = df['Fecha Facturacion'].dt.month.fillna(0).astype(int)
         
-        # Ensure month names are correct for Spanish locale
-        # If locale.setlocale fails, you might need a manual map
-        if 'MONTH_NAME_MAP' in globals(): # Check if the fallback map was created
+        if 'MONTH_NAME_MAP' in globals():
             df['Mes Nombre Facturacion'] = df['Mes Facturacion'].map(MONTH_NAME_MAP).fillna('Desconocido')
         else:
-            df['Mes Nombre Facturacion'] = df['Fecha Facturacion'].dt.strftime('%B').fillna('Desconocido') # Full month name
+            df['Mes Nombre Facturacion'] = df['Fecha Facturacion'].dt.strftime('%B').fillna('Desconocido')
 
 
-        # Create 'Aerolinea_Display' for plotting if 'Aerolinea' has NaNs
         df['Aerolinea_Display'] = df['Aerolinea'].fillna('No Definido')
 
-        # --- Apply specific transformations for all sections to have clean, enhanced data ---
-        # A. Clasificación de mercado
         df['Mercado'] = df.apply(
             lambda row: "Local" if row['Pais'] == row['Destino'] else "Emisivo",
             axis=1
         )
 
-        # B. Conversión de ingresos a dólares
         df = pd.merge(
             df,
             fx_df_param,
@@ -135,12 +109,11 @@ def load_and_prepare_data(url, fx_df_param):
                 return row['Ingreso Total'] * row['Colombia_FX'] if pd.notna(row['Colombia_FX']) else np.nan
             elif row['Pais'] == 'México':
                 return row['Ingreso Total'] * row['México_FX'] if pd.notna(row['México_FX']) else np.nan
-            else: # For other countries, assume Ingreso Total is already local currency or cannot convert
+            else:
                 return np.nan
         df['Ingreso Moneda Local'] = df.apply(calculate_local_currency_income, axis=1)
 
-        # C. Tratamiento de valores faltantes para "Vuelo" en el plan y aerolínea vacía
-        df['Aerolinea'] = df['Aerolinea'].astype(str) # Convert to string to avoid issues with NaN during contains()
+        df['Aerolinea'] = df['Aerolinea'].astype(str)
         vuelo_plans = ['Solo Hotel + Vuelo']
         mask_vuelo_no_aerolinea = (df['Plan'].isin(vuelo_plans)) & (df['Aerolinea'] == 'nan')
         if mask_vuelo_no_aerolinea.any():
@@ -153,30 +126,21 @@ def load_and_prepare_data(url, fx_df_param):
                     df.loc[index, 'Aerolinea'] = most_frequent_airline.iloc[0]
                 else:
                     df.loc[index, 'Aerolinea'] = 'Vuelo No Especificado'
-        df['Aerolinea'] = df['Aerolinea'].replace('nan', np.nan) # Convert 'nan' string back to actual NaN
-        df['Aerolinea_Display'] = df['Aerolinea'].fillna('No Definido') # Re-generate Aerolinea_Display after imputation
+        df['Aerolinea'] = df['Aerolinea'].replace('nan', np.nan)
+        df['Aerolinea_Display'] = df['Aerolinea'].fillna('No Definido')
 
-        # D. Cálculo de comisión por aerolínea y destino
         def calculate_commission(row):
             destino = row['Destino']
-            aerolinea = row['Aerolinea_Display'] # Use Aerolinea_Display as it handles 'No Definido'
-            ingreso = row['Ingreso Total']
-
-            # Map 'No Definido' to a key not in COMMISSION_RATES or handle specifically
             actual_aerolinea_key = row['Aerolinea'] if pd.notna(row['Aerolinea']) else None
+            ingreso = row['Ingreso Total']
 
             if pd.notna(destino) and actual_aerolinea_key in ['AV', 'LA', 'CM'] and destino in COMMISSION_RATES and actual_aerolinea_key in COMMISSION_RATES[destino]:
                 return ingreso * COMMISSION_RATES[destino][actual_aerolinea_key]
-            return 0 # No commission if data is missing or not found in table
+            return 0
 
         df['Comision'] = df.apply(calculate_commission, axis=1)
-        
-        # Calculate Net Income (Ingreso Neto)
         df['Ingreso Neto'] = df['Ingreso Total'] - df['Comision']
 
-        # E. Distribución de presupuesto de facturación 2025 (Bonus Opcional)
-        # This part calculates total_sales_2024 and estimated_monthly_budget_2025
-        # and stores it in session state so it can be used across sections without recalculating on every widget interaction
         sales_2024 = df[df['Año Facturacion'] == 2024]['Ingreso Total'].sum()
         if sales_2024 > 0:
             budget_2025_estimated = sales_2024 * 1.30
@@ -184,7 +148,6 @@ def load_and_prepare_data(url, fx_df_param):
             total_sales_2024_for_dist = monthly_sales_2024.sum()
             if total_sales_2024_for_dist > 0:
                 monthly_distribution_ratio = monthly_sales_2024 / total_sales_2024_for_dist
-                # Reindex to ensure all 12 months are present, even if some have no sales
                 estimated_monthly_budget_2025 = monthly_distribution_ratio.reindex(range(1, 13), fill_value=0) * budget_2025_estimated
                 st.session_state['estimated_monthly_budget_2025'] = estimated_monthly_budget_2025.values
                 st.session_state['budget_2025_total'] = budget_2025_estimated
@@ -204,8 +167,8 @@ def load_and_prepare_data(url, fx_df_param):
         st.error(f"Error al leer o preparar el archivo Excel: {e}. Asegúrate de que es un archivo .xlsx válido y el formato de datos es correcto.")
         st.stop()
 
-# Load and prepare data once, passing FX_DF
 df_transformed = load_and_prepare_data(GITHUB_EXCEL_URL, FX_DF)
+
 
 # --- SECTION: 1. EDA ---
 if section == "1. EDA":
@@ -263,8 +226,6 @@ if section == "1. EDA":
     st.subheader("1.5. Visualizaciones de Datos (EDA)")
     st.write("Explora las relaciones y distribuciones de tus datos con estos gráficos interactivos.")
 
-    # List of EDA plots (keeping them concise here as they were detailed before)
-    # The plots use df_transformed now that it includes all transformations
     plots_to_display = [
         ("Ingreso Total por Destino", px.bar(df_transformed.groupby('Destino')['Ingreso Total'].sum().reset_index(), x='Destino', y='Ingreso Total', title='Ingreso Total por Destino', color='Destino')),
         ("Número de Room Nights por Plan", px.bar(df_transformed.groupby('Plan')['# Room Nights'].sum().reset_index(), x='Plan', y='# Room Nights', title='Número de Room Nights por Plan', color='Plan')),
@@ -352,7 +313,6 @@ elif section == "3. Dashboard Ejecutivo":
     st.markdown("---")
     st.subheader("Filtros Interactivos")
 
-    # Interactive Filters
     col1, col2, col3 = st.columns(3)
 
     with col1:
@@ -375,7 +335,6 @@ elif section == "3. Dashboard Ejecutivo":
             default=sorted(df_transformed['Pais'].unique().tolist())
         )
 
-    # Apply filters to a temporary dataframe for dashboard use
     df_filtered = df_transformed[
         (df_transformed['Año Facturacion'].isin(selected_years)) &
         (df_transformed['Tipo Cliente'].isin(selected_client_types)) &
@@ -388,25 +347,20 @@ elif section == "3. Dashboard Ejecutivo":
         st.markdown("---")
         st.subheader("Visualizaciones del Dashboard")
 
-        # --- Dashboard Viz 1: Ventas e ingresos por año (2024 y estimado 2025) ---
         st.markdown("##### 3.1. Ventas e Ingresos por Año (2024 y Estimado 2025)")
-        # Get actual 2024 sales from filtered data
         actual_sales_2024_filtered = df_filtered[df_filtered['Año Facturacion'] == 2024]['Ingreso Total'].sum()
 
-        # Prepare data for plotting
         years_data = {
             'Año': [],
             'Tipo': [],
             'Ingreso Total ($)': []
         }
 
-        # Add 2024 actual sales
         if 2024 in selected_years:
             years_data['Año'].append(2024)
             years_data['Tipo'].append('Ingreso Real')
             years_data['Ingreso Total ($)'].append(actual_sales_2024_filtered)
 
-        # Add 2025 estimated budget (if available in session_state)
         if 2025 in selected_years and 'budget_2025_total' in st.session_state:
             years_data['Año'].append(2025)
             years_data['Tipo'].append('Presupuesto Estimado')
@@ -429,7 +383,6 @@ elif section == "3. Dashboard Ejecutivo":
             st.info("No hay datos de ingresos disponibles para los años seleccionados.")
 
 
-        # --- Dashboard Viz 2: Distribución por tipo de cliente y país ---
         st.markdown("##### 3.2. Distribución de Ingresos por Tipo de Cliente y País")
         df_client_country = df_filtered.groupby(['Tipo Cliente', 'Pais'])['Ingreso Total'].sum().reset_index()
         fig_client_country = px.bar(
@@ -437,13 +390,12 @@ elif section == "3. Dashboard Ejecutivo":
             x='Pais',
             y='Ingreso Total',
             color='Tipo Cliente',
-            barmode='stack', # Stacked bars to show total for each country
+            barmode='stack',
             title='Ingresos por País y Tipo de Cliente',
             labels={'Ingreso Total': 'Ingreso Total ($)'}
         )
         st.plotly_chart(fig_client_country, use_container_width=True)
 
-        # --- Dashboard Viz 3: Preferencias de plan por tipo de cliente ---
         st.markdown("##### 3.3. Preferencias de Plan por Tipo de Cliente")
         df_plan_client = df_filtered.groupby(['Tipo Cliente', 'Plan'])['ID Cliente'].nunique().reset_index()
         df_plan_client.columns = ['Tipo Cliente', 'Plan', 'Numero de Clientes']
@@ -552,7 +504,6 @@ print(df)
     """
     st.code(python_code, language='python')
 
-    # Execute the code to show the output
     st.markdown("##### Output del código original:")
     df_python_original = pd.DataFrame({
      'Cliente': ['A', 'B', 'C', 'D'],
@@ -712,7 +663,6 @@ elif section == "6. Análisis de Escenarios y Recomendaciones":
     st.subheader("6.1. Escenario 1: Optimización de Ingresos por Segmento y Plan")
     st.write("Identificar qué combinaciones de **Tipo de Cliente** y **Plan** generan más ingresos y dónde hay oportunidades de crecimiento.")
     
-    # Analysis
     df_segment_plan_revenue = df_transformed.groupby(['Tipo Cliente', 'Plan'])['Ingreso Total'].sum().reset_index()
     df_segment_plan_revenue = df_segment_plan_revenue.sort_values(by='Ingreso Total', ascending=False)
 
@@ -738,7 +688,6 @@ elif section == "6. Análisis de Escenarios y Recomendaciones":
     st.subheader("6.2. Escenario 2: Rentabilidad por Destino (Neto de Comisiones)")
     st.write("Evaluar la rentabilidad real de cada destino después de deducir las comisiones, para identificar los más y menos eficientes.")
     
-    # Analysis
     df_destination_profit = df_transformed.groupby('Destino').agg(
         Total_Ingreso=('Ingreso Total', 'sum'),
         Total_Comision=('Comision', 'sum'),
@@ -767,21 +716,15 @@ elif section == "6. Análisis de Escenarios y Recomendaciones":
     st.subheader("6.3. Escenario 3: Impacto de la Estacionalidad en Ingresos y Room Nights")
     st.write("Analizar las tendencias mensuales para entender la estacionalidad en ingresos y noches de habitación, crucial para la planificación operativa y de marketing.")
     
-    # Analysis
     df_monthly_trends = df_transformed.groupby('Mes Nombre Facturacion').agg(
         Ingreso_Total=('Ingreso Total', 'sum'),
         Room_Nights=('# Room Nights', 'sum')
     ).reset_index()
 
-    # Order months correctly for plotting
     month_order = [
         'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
         'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
     ]
-    # Ensure all month names are in the DataFrame or the category definition matches.
-    # It's good to re-check actual month names in df_transformed if problem persists.
-    # st.write(f"Unique month names in data: {df_transformed['Mes Nombre Facturacion'].unique().tolist()}") # Debugging line
-
     df_monthly_trends['Mes Nombre Facturacion'] = pd.Categorical(df_monthly_trends['Mes Nombre Facturacion'], categories=month_order, ordered=True)
     df_monthly_trends = df_monthly_trends.sort_values('Mes Nombre Facturacion')
 
@@ -819,14 +762,10 @@ elif section == "6. Análisis de Escenarios y Recomendaciones":
     st.subheader("6.4. Escenario 4: Rendimiento de Agencias de Viaje vs. Directo")
     st.write("Comparar el rendimiento de los clientes que reservan a través de agencias de viaje versus los que reservan directamente.")
     
-    # Debugging: Check unique values in 'Tipo Cliente'
-    # st.write(f"Unique 'Tipo Cliente' values: {df_transformed['Tipo Cliente'].unique().tolist()}")
-
-    # Analysis: Assume 'Agencias de Viaje' is a 'Tipo Cliente', direct could be 'Cliente Final'
-    # Ensure these exact strings exist in your data.
-    relevant_client_types = ['Agencias de Viaje', 'Cliente Final'] # Define clearly
+    # Corrected client types based on the provided unique values
+    # 'Agencia' for travel agencies and 'Turista' for direct clients (tourists)
+    relevant_client_types = ['Agencia', 'Turista']
     
-    # Filter the DataFrame for these specific client types
     df_agency_vs_direct = df_transformed[df_transformed['Tipo Cliente'].isin(relevant_client_types)].groupby('Tipo Cliente').agg(
         Ingreso_Total=('Ingreso Total', 'sum'),
         Numero_Clientes=('ID Cliente', 'nunique'),
@@ -834,13 +773,13 @@ elif section == "6. Análisis de Escenarios y Recomendaciones":
     ).reset_index()
 
     if df_agency_vs_direct.empty:
-        st.warning(f"No hay datos disponibles para 'Agencias de Viaje' o 'Cliente Final'. Revisa los valores únicos en la columna 'Tipo Cliente' de tu dataset. Los valores esperados son: {relevant_client_types}.")
+        st.warning(f"No hay datos disponibles para 'Agencia' o 'Turista'. Revisa los valores únicos en la columna 'Tipo Cliente' de tu dataset. Los valores esperados son: {relevant_client_types}.")
     else:
         fig_agency_direct_revenue = px.bar(
             df_agency_vs_direct,
             x='Tipo Cliente',
             y='Ingreso_Total',
-            title='Ingreso Total: Agencias de Viaje vs. Cliente Final',
+            title='Ingreso Total: Agencia vs. Turista (Directo)',
             labels={'Ingreso_Total': 'Ingreso Total ($)'},
             color='Tipo Cliente'
         )
@@ -849,28 +788,27 @@ elif section == "6. Análisis de Escenarios y Recomendaciones":
 
     st.markdown("""
     **Recomendaciones:**
-    * **Incentivar reserva directa:** Si los clientes directos tienen un valor promedio más alto o menores costos de adquisición (sin comisiones), invertir en la optimización del sitio web, programas de lealtad y ofertas exclusivas para fomentar más reservas directas.
-    * **Fortalecer alianzas con agencias:** Si las agencias de viaje aportan un volumen significativo de ingresos, mantener y fortalecer las relaciones con las agencias clave, ofreciéndoles soporte, capacitación y herramientas para vender los paquetes del hotel de manera efectiva.
+    * **Incentivar reserva directa:** Si los clientes **'Turista'** (directos) tienen un valor promedio más alto o menores costos de adquisición (sin comisiones), invertir en la optimización del sitio web, programas de lealtad y ofertas exclusivas para fomentar más reservas directas.
+    * **Fortalecer alianzas con agencias:** Si las **'Agencia'** de viaje aportan un volumen significativo de ingresos, mantener y fortalecer las relaciones con las agencias clave, ofreciéndoles soporte, capacitación y herramientas para vender los paquetes del hotel de manera efectiva.
     """)
 
     st.markdown("---")
     st.subheader("6.5. Escenario 5: Análisis de Concentración por País de Origen")
     st.write("Identificar si los ingresos están fuertemente concentrados en pocos países de origen y evaluar el riesgo/oportunidad de diversificación.")
     
-    # Analysis
     df_country_origin_revenue = df_transformed.groupby('Pais')['Ingreso Total'].sum().reset_index()
     df_country_origin_revenue['Porcentaje'] = (df_country_origin_revenue['Ingreso Total'] / df_country_origin_revenue['Ingreso Total'].sum()) * 100
     df_country_origin_revenue = df_country_origin_revenue.sort_values(by='Ingreso Total', ascending=False)
 
     fig_country_pie = px.pie(
-        df_country_origin_revenue.head(5), # Top 5 for clarity in pie chart
+        df_country_origin_revenue.head(5),
         values='Ingreso Total',
         names='Pais',
         title='Distribución de Ingresos por País de Origen (Top 5)',
         hole=0.3
     )
     st.plotly_chart(fig_country_pie, use_container_width=True)
-    st.dataframe(df_country_origin_revenue.head(7)) # Show top 7 in table
+    st.dataframe(df_country_origin_revenue.head(7))
 
     st.markdown("""
     **Recomendaciones:**
@@ -882,7 +820,6 @@ elif section == "6. Análisis de Escenarios y Recomendaciones":
     st.subheader("6.6. Escenario 6: Identificación de Oportunidades en Planes 'Solo Hotel'")
     st.write("Analizar el potencial de upselling para clientes que reservan 'Solo Hotel', identificando oportunidades para ofrecer vuelos o paquetes carreteros.")
     
-    # Analysis
     df_solo_hotel = df_transformed[df_transformed['Plan'] == 'Solo Hotel'].groupby('Destino').agg(
         Total_Clientes=('ID Cliente', 'nunique'),
         Ingreso_Solo_Hotel=('Ingreso Total', 'sum')
@@ -910,7 +847,6 @@ elif section == "6. Análisis de Escenarios y Recomendaciones":
     st.subheader("6.7. Escenario 7: Eficiencia de Room Nights por Cliente")
     st.write("Analizar el promedio de noches de habitación por cliente para identificar patrones de estancia y oportunidades para extender la duración de las visitas.")
     
-    # Analysis
     df_avg_room_nights = df_transformed.groupby('ID Cliente')['# Room Nights'].sum().reset_index()
     avg_room_nights_per_customer = df_avg_room_nights['# Room Nights'].mean()
     
@@ -934,12 +870,11 @@ elif section == "6. Análisis de Escenarios y Recomendaciones":
     st.subheader("6.8. Escenario 8: Desempeño de Aerolíneas Socias")
     st.write("Evaluar qué aerolíneas asociadas contribuyen más a los ingresos, especialmente para planes que incluyen vuelo, y cómo optimizar estas alianzas.")
     
-    # Analysis
     df_airline_revenue = df_transformed.groupby('Aerolinea_Display')['Ingreso Total'].sum().reset_index()
     df_airline_revenue = df_airline_revenue.sort_values(by='Ingreso Total', ascending=False)
 
     fig_airline_revenue = px.bar(
-        df_airline_revenue.head(10), # Show top 10 for clarity
+        df_airline_revenue.head(10),
         x='Aerolinea_Display',
         y='Ingreso Total',
         title='Ingreso Total por Aerolínea (Top 10)',
@@ -959,7 +894,6 @@ elif section == "6. Análisis de Escenarios y Recomendaciones":
     st.subheader("6.9. Escenario 9: Potencial de Crecimiento en Mercados Emisivos")
     st.write("Evaluar el rendimiento de los mercados emisivos (clientes de un país diferente al destino) y el potencial de expansión.")
     
-    # Analysis
     df_mercado = df_transformed.groupby('Mercado')['Ingreso Total'].sum().reset_index()
     df_mercado_detail = df_transformed[df_transformed['Mercado'] == 'Emisivo'].groupby(['Pais', 'Destino'])['Ingreso Total'].sum().reset_index()
     df_mercado_detail = df_mercado_detail.sort_values(by='Ingreso Total', ascending=False)
@@ -983,11 +917,10 @@ elif section == "6. Análisis de Escenarios y Recomendaciones":
     st.subheader("6.10. Escenario 10: Optimización de Estrategias para Clientes Corporativos")
     st.write("Analizar el comportamiento y el valor de los clientes 'Corporativo' para diseñar estrategias que maximicen este segmento.")
     
-    # Analysis
     df_corporate = df_transformed[df_transformed['Tipo Cliente'] == 'Corporativo'].groupby('Destino').agg(
-        Total_Reservas=('ID Cliente', 'count'), # Count of bookings from corporate
+        Total_Reservas=('ID Cliente', 'count'),
         Ingreso_Corporativo=('Ingreso Total', 'sum'),
-        Avg_Room_Nights=('# Room Nights', 'mean') # Changed to '# Room Nights' for consistency
+        Avg_Room_Nights=('# Room Nights', 'mean')
     ).reset_index()
     df_corporate = df_corporate.sort_values(by='Ingreso_Corporativo', ascending=False)
 
