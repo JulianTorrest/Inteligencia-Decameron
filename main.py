@@ -249,7 +249,7 @@ if section == "1. EDA":
         ("Room Nights por Destino y Tipo de Cliente", px.bar(df_transformed.groupby(['Destino', 'Tipo Cliente'])['# Room Nights'].sum().reset_index(), x='Destino', y='# Room Nights', color='Tipo Cliente', barmode='group', title='Room Nights por Destino y Tipo de Cliente')),
         ("Distribución del Valor Total por Tipo de Cliente (Box Plot)", px.box(df_transformed, x='Tipo Cliente', y='Valor Total', title='Distribución del Valor Total por Tipo de Cliente', color='Tipo Cliente')),
         ("Room Nights por Fecha de Check-in", px.line(df_transformed.groupby('Fecha Check-in')['# Room Nights'].sum().reset_index(), x='Fecha Check-in', y='# Room Nights', title='Total de Room Nights por Fecha de Check-in', markers=True)),
-        ("Ingreso Total por Plan y Aerolínea", px.bar(df_transformed.groupby(['Plan', 'Aerolinea_Display'])['Ingreso Total'].sum().reset_index(), x='Plan', y='Ingreso Total', color='Aerolinea_Display', title='Ingreso Total por Plan Desglosado por Aerolínea'))
+        ("Ingreso Total por Plan y Aerolinea", px.bar(df_transformed.groupby(['Plan', 'Aerolinea_Display'])['Ingreso Total'].sum().reset_index(), x='Plan', y='Ingreso Total', color='Aerolinea_Display', title='Ingreso Total por Plan Desglosado por Aerolinea'))
     ]
 
     for title, fig in plots_to_display:
@@ -282,7 +282,7 @@ elif section == "2. Transformación y Análisis de Datos":
     st.dataframe(df_transformed[df_transformed['Plan'] == 'Solo Hotel + Vuelo'][['Plan', 'Aerolinea_Display', 'Destino', 'Pais']].head())
 
 
-    st.subheader("D. Cálculo de Comisión por Aerolínea y Destino")
+    st.subheader("D. Cálculo de Comisión por Aerolinea y Destino")
     st.write("Se ha agregado la columna 'Comision' calculada según la tabla de comisiones proporcionada.")
     st.dataframe(df_transformed[['Destino', 'Aerolinea_Display', 'Ingreso Total', 'Comision']].head())
     st.write(f"Comisión total calculada: **${df_transformed['Comision'].sum():,.2f}**")
@@ -451,8 +451,10 @@ elif section == "4. Pensamiento Analítico (SQL & Python)":
 
     **Consideraciones:**
     A. Las coincidencias se basan en los campos: `ID_CLIENTE`, `ID_HABITACION`, `ID_RESERVA`, `FECHA_ENTRADA`.
-    B. Se deben mostrar únicamente las diferencias donde el `VALOR` difiera en 50.000 pesos o más (positiva o negativa).
-    C. También deben incluirse registros que existan en una tabla, pero no en la otra (por ejemplo, reservas sin facturación o facturación sin reserva).
+    B. Se deben mostrar únicamente las diferencias donde el `VALOR` difiera en 50.000 pesos
+       o más (positiva o negativa).
+    C. También deben incluirse registros que existan en una tabla, pero no en la otra
+       (por ejemplo, reservas sin facturación o facturación sin reserva).
     """)
 
     st.markdown("```sql")
@@ -460,30 +462,30 @@ elif section == "4. Pensamiento Analítico (SQL & Python)":
 -- Consulta SQL para identificar inconsistencias entre RESERVAS y FACTURACION
 
 SELECT
-    COALESCE(R.ID_CLIENTE, F.ID_CLIENTE) AS ID_CLIENTE,
-    COALESCE(R.ID_HABITACION, F.ID_HABITACION) AS ID_HABITACION,
-    COALESCE(R.ID_RESERVA, F.ID_RESERVA) AS ID_RESERVA,
-    COALESCE(R.FECHA_ENTRADA, F.FECHA_ENTRADA) AS FECHA_ENTRADA,
-    R.VALOR AS VALOR_RESERVA,
-    F.VALOR AS VALOR_FACTURACION,
-    (F.VALOR - R.VALOR) AS DIFERENCIA_VALOR,
+    COALESCE(RESERVAS.ID_CLIENTE, FACTURACION.ID_CLIENTE) AS ID_CLIENTE,
+    COALESCE(RESERVAS.ID_HABITACION, FACTURACION.ID_HABITACION) AS ID_HABITACION,
+    COALESCE(RESERVAS.ID_RESERVA, FACTURACION.ID_RESERVA) AS ID_RESERVA,
+    COALESCE(RESERVAS.FECHA_ENTRADA, FACTURACION.FECHA_ENTRADA) AS FECHA_ENTRADA,
+    RESERVAS.VALOR AS VALOR_RESERVA,
+    FACTURACION.VALOR AS VALOR_FACTURACION,
+    (FACTURACION.VALOR - RESERVAS.VALOR) AS DIFERENCIA_VALOR,
     CASE
-        WHEN R.ID_RESERVA IS NULL THEN 'Facturación sin Reserva'
-        WHEN F.ID_RESERVA IS NULL THEN 'Reserva sin Facturación'
-        WHEN ABS(F.VALOR - R.VALOR) >= 50000 THEN 'Diferencia de Valor >= 50.000'
-        ELSE 'Coincidencia (No Mostrado)' -- No se mostraría si la diferencia es menor a 50k
+        WHEN RESERVAS.ID_RESERVA IS NULL THEN 'Facturación sin Reserva'
+        WHEN FACTURACION.ID_RESERVA IS NULL THEN 'Reserva sin Facturación'
+        WHEN ABS(FACTURACION.VALOR - RESERVAS.VALOR) >= 50000 THEN 'Diferencia de Valor >= 50.000'
+        ELSE 'Coincidencia (No Mostrado)' -- Esta categoría no se mostraría debido al filtro WHERE
     END AS TIPO_INCONSISTENCIA
 FROM
-    RESERVAS R
+    RESERVAS
 FULL OUTER JOIN
-    FACTURACION F ON R.ID_CLIENTE = F.ID_CLIENTE
-                 AND R.ID_HABITACION = F.ID_HABITACION
-                 AND R.ID_RESERVA = F.ID_RESERVA
-                 AND R.FECHA_ENTRADA = F.FECHA_ENTRADA
+    FACTURACION ON RESERVAS.ID_CLIENTE = FACTURACION.ID_CLIENTE
+                 AND RESERVAS.ID_HABITACION = FACTURACION.ID_HABITACION
+                 AND RESERVAS.ID_RESERVA = FACTURACION.ID_RESERVA
+                 AND RESERVAS.FECHA_ENTRADA = FACTURACION.FECHA_ENTRADA
 WHERE
-    R.ID_RESERVA IS NULL -- Registros solo en FACTURACION
-    OR F.ID_RESERVA IS NULL -- Registros solo en RESERVAS
-    OR ABS(F.VALOR - R.VALOR) >= 50000; -- Diferencias de valor significativas
+    RESERVAS.ID_RESERVA IS NULL -- Registros solo en FACTURACION
+    OR FACTURACION.ID_RESERVA IS NULL -- Registros solo en RESERVAS
+    OR ABS(FACTURACION.VALOR - RESERVAS.VALOR) >= 50000; -- Diferencias de valor significativas
     """)
     st.markdown("```")
 
@@ -491,11 +493,11 @@ WHERE
     **Explicación de la Consulta SQL:**
     * **`FULL OUTER JOIN`**: Esta es la clave para identificar registros que existen en una tabla pero no en la otra. Mantiene todas las filas de ambas tablas, uniendo donde hay coincidencias y colocando `NULL` donde no las hay.
     * **`COALESCE`**: Se usa para seleccionar el primer valor no nulo entre `RESERVAS` y `FACTURACION` para los campos de unión (`ID_CLIENTE`, `ID_HABITACION`, etc.). Esto asegura que los identificadores se muestren incluso si solo existen en una de las tablas.
-    * **`DIFERENCIA_VALOR`**: Calcula la resta directa entre `VALOR_FACTURACION` y `VALOR_RESERVA`.
+    * **`DIFERENCIA_VALOR`**: Calcula la resta directa entre `FACTURACION.VALOR` y `RESERVAS.VALOR`.
     * **`TIPO_INCONSISTENCIA`**: Una declaración `CASE` para categorizar el tipo de inconsistencia:
-        * **`R.ID_RESERVA IS NULL`**: Indica que un registro de `FACTURACION` no tiene una `RESERVA` correspondiente.
-        * **`F.ID_RESERVA IS NULL`**: Indica que un registro de `RESERVAS` no tiene una `FACTURACION` correspondiente.
-        * **`ABS(F.VALOR - R.VALOR) >= 50000`**: Identifica las filas donde la diferencia absoluta entre los valores es de 50.000 o más.
+        * **`RESERVAS.ID_RESERVA IS NULL`**: Indica que un registro de `FACTURACION` no tiene una `RESERVA` correspondiente.
+        * **`FACTURACION.ID_RESERVA IS NULL`**: Indica que un registro de `RESERVAS` no tiene una `FACTURACION` correspondiente.
+        * **`ABS(FACTURACION.VALOR - RESERVAS.VALOR) >= 50000`**: Identifica las filas donde la diferencia absoluta entre los valores es de 50.000 o más.
     * **`WHERE` clause**: Filtra los resultados para mostrar solo las inconsistencias requeridas: registros que son `NULL` en un lado de la unión (existen solo en una tabla) o donde la diferencia de `VALOR` es significativa.
     """)
 
