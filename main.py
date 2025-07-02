@@ -38,7 +38,9 @@ st.sidebar.header("Navegación")
 section = st.sidebar.radio("Ir a la Sección:",
                            ["1. EDA",
                             "2. Transformación y Análisis de Datos",
-                            "3. Dashboard Ejecutivo"])
+                            "3. Dashboard Ejecutivo",
+                            "4. Pensamiento Analítico (SQL & Python)",
+                            "5. Pensamiento Estratégico (Data Sources)"])
 
 # --- Data Loading and Initial Preparation (Common to all sections) ---
 st.write(f"Cargando archivo desde: [{GITHUB_EXCEL_URL}]({GITHUB_EXCEL_URL})")
@@ -152,8 +154,8 @@ def load_and_prepare_data(url, fx_df_param):
             total_sales_2024_for_dist = monthly_sales_2024.sum()
             if total_sales_2024_for_dist > 0:
                 monthly_distribution_ratio = monthly_sales_2024 / total_sales_2024_for_dist
-                estimated_monthly_budget_2025 = monthly_distribution_ratio * budget_2025_estimated
-                st.session_state['estimated_monthly_budget_2025'] = estimated_monthly_budget_2025.reindex(range(1, 13), fill_value=0).values
+                estimated_monthly_budget_2025 = monthly_distribution_ratio.reindex(range(1, 13), fill_value=0) * budget_2025_estimated
+                st.session_state['estimated_monthly_budget_2025'] = estimated_monthly_budget_2025.values
                 st.session_state['budget_2025_total'] = budget_2025_estimated
             else:
                 st.session_state['estimated_monthly_budget_2025'] = np.zeros(12)
@@ -435,3 +437,235 @@ elif section == "3. Dashboard Ejecutivo":
             * **Disposición:** `st.set_page_config(layout="wide")` asegura que la aplicación ocupe el ancho completo de la pantalla.
             """
         )
+
+# --- SECTION: 4. PENSAMIENTO ANALÍTICO (SQL & Python) ---
+elif section == "4. Pensamiento Analítico (SQL & Python)":
+    st.header("4. Pensamiento Analítico (SQL & Python)")
+    st.write("Esta sección presenta desafíos de pensamiento analítico en SQL y Python.")
+
+    st.markdown("---")
+    st.subheader("4.1. Desafío SQL: Identificación de Inconsistencias entre Sistemas")
+    st.write("""
+    Un grupo hotelero opera con dos sistemas principales: **RESERVAS** y **FACTURACION**.
+    Se han detectado inconsistencias entre ambos sistemas, y se requiere una consulta SQL que identifique diferencias significativas.
+
+    **Consideraciones:**
+    A. Las coincidencias se basan en los campos: `ID_CLIENTE`, `ID_HABITACION`, `ID_RESERVA`, `FECHA_ENTRADA`.
+    B. Se deben mostrar únicamente las diferencias donde el `VALOR` difiera en 50.000 pesos o más (positiva o negativa).
+    C. También deben incluirse registros que existan en una tabla, pero no en la otra (por ejemplo, reservas sin facturación o facturación sin reserva).
+    """)
+
+    st.markdown("```sql")
+    st.code("""
+-- Consulta SQL para identificar inconsistencias entre RESERVAS y FACTURACION
+
+SELECT
+    COALESCE(R.ID_CLIENTE, F.ID_CLIENTE) AS ID_CLIENTE,
+    COALESCE(R.ID_HABITACION, F.ID_HABITACION) AS ID_HABITACION,
+    COALESCE(R.ID_RESERVA, F.ID_RESERVA) AS ID_RESERVA,
+    COALESCE(R.FECHA_ENTRADA, F.FECHA_ENTRADA) AS FECHA_ENTRADA,
+    R.VALOR AS VALOR_RESERVA,
+    F.VALOR AS VALOR_FACTURACION,
+    (F.VALOR - R.VALOR) AS DIFERENCIA_VALOR,
+    CASE
+        WHEN R.ID_RESERVA IS NULL THEN 'Facturación sin Reserva'
+        WHEN F.ID_RESERVA IS NULL THEN 'Reserva sin Facturación'
+        WHEN ABS(F.VALOR - R.VALOR) >= 50000 THEN 'Diferencia de Valor >= 50.000'
+        ELSE 'Coincidencia (No Mostrado)' -- No se mostraría si la diferencia es menor a 50k
+    END AS TIPO_INCONSISTENCIA
+FROM
+    RESERVAS R
+FULL OUTER JOIN
+    FACTURACION F ON R.ID_CLIENTE = F.ID_CLIENTE
+                 AND R.ID_HABITACION = F.ID_HABITACION
+                 AND R.ID_RESERVA = F.ID_RESERVA
+                 AND R.FECHA_ENTRADA = F.FECHA_ENTRADA
+WHERE
+    R.ID_RESERVA IS NULL -- Registros solo en FACTURACION
+    OR F.ID_RESERVA IS NULL -- Registros solo en RESERVAS
+    OR ABS(F.VALOR - R.VALOR) >= 50000; -- Diferencias de valor significativas
+    """)
+    st.markdown("```")
+
+    st.markdown("""
+    **Explicación de la Consulta SQL:**
+    * **`FULL OUTER JOIN`**: Esta es la clave para identificar registros que existen en una tabla pero no en la otra. Mantiene todas las filas de ambas tablas, uniendo donde hay coincidencias y colocando `NULL` donde no las hay.
+    * **`COALESCE`**: Se usa para seleccionar el primer valor no nulo entre `RESERVAS` y `FACTURACION` para los campos de unión (`ID_CLIENTE`, `ID_HABITACION`, etc.). Esto asegura que los identificadores se muestren incluso si solo existen en una de las tablas.
+    * **`DIFERENCIA_VALOR`**: Calcula la resta directa entre `VALOR_FACTURACION` y `VALOR_RESERVA`.
+    * **`TIPO_INCONSISTENCIA`**: Una declaración `CASE` para categorizar el tipo de inconsistencia:
+        * **`R.ID_RESERVA IS NULL`**: Indica que un registro de `FACTURACION` no tiene una `RESERVA` correspondiente.
+        * **`F.ID_RESERVA IS NULL`**: Indica que un registro de `RESERVAS` no tiene una `FACTURACION` correspondiente.
+        * **`ABS(F.VALOR - R.VALOR) >= 50000`**: Identifica las filas donde la diferencia absoluta entre los valores es de 50.000 o más.
+    * **`WHERE` clause**: Filtra los resultados para mostrar solo las inconsistencias requeridas: registros que son `NULL` en un lado de la unión (existen solo en una tabla) o donde la diferencia de `VALOR` es significativa.
+    """)
+
+
+    st.markdown("---")
+    st.subheader("4.2. Desafío Python: Análisis de Crecimiento de Ventas")
+    st.write("A continuación, se presenta un fragmento de código en Python. Analiza lo que hace y responde las preguntas.")
+
+    python_code = """
+import pandas as pd
+
+df = pd.DataFrame({
+ 'Cliente': ['A', 'B', 'C', 'D'],
+ 'Ventas_2024': [100000, 150000, 120000, 130000],
+ 'Ventas_2025': [130000, 160000, 140000, 125000]
+})
+
+df['Crecimiento (%)'] = ((df['Ventas_2025'] - df['Ventas_2024']) / df['Ventas_2024']) * 100
+
+print(df)
+    """
+    st.code(python_code, language='python')
+
+    # Execute the code to show the output
+    st.markdown("##### Output del código original:")
+    df_python_original = pd.DataFrame({
+     'Cliente': ['A', 'B', 'C', 'D'],
+     'Ventas_2024': [100000, 150000, 120000, 130000],
+     'Ventas_2025': [130000, 160000, 140000, 125000]
+    })
+    df_python_original['Crecimiento (%)'] = ((df_python_original['Ventas_2025'] - df_python_original['Ventas_2024']) /
+    df_python_original['Ventas_2024']) * 100
+    st.dataframe(df_python_original)
+
+
+    st.markdown("##### A. ¿Qué hace este código paso a paso?")
+    st.markdown("""
+    Este código Python utiliza la librería `pandas` para realizar un análisis de **crecimiento porcentual de ventas** entre dos años (2024 y 2025) para un conjunto de clientes.
+
+    **Paso a paso:**
+    1.  **`import pandas as pd`**: Importa la librería pandas, una herramienta fundamental para la manipulación y análisis de datos en Python, y la renombra como `pd` para facilitar su uso.
+    2.  **`df = pd.DataFrame(...)`**: Crea un **DataFrame** de pandas, que es una estructura de datos tabular (similar a una hoja de cálculo). Este DataFrame contiene:
+        * Una columna 'Cliente' con identificadores de cliente ('A', 'B', 'C', 'D').
+        * Una columna 'Ventas_2024' con los montos de ventas para cada cliente en el año 2024.
+        * Una columna 'Ventas_2025' con los montos de ventas para cada cliente en el año 2025.
+    3.  **`df['Crecimiento (%)'] = ...`**: Calcula el **crecimiento porcentual** de las ventas para cada cliente y almacena el resultado en una nueva columna llamada 'Crecimiento (%)'. La fórmula utilizada es: `((Ventas_2025 - Ventas_2024) / Ventas_2024) * 100`.
+    4.  **`print(df)`**: Imprime en la consola el DataFrame completo, incluyendo la nueva columna 'Crecimiento (%)', mostrando los datos originales junto con el crecimiento calculado para cada cliente.
+
+    **En resumen:** El código carga datos de ventas de 2024 y 2025 para varios clientes y calcula el porcentaje de crecimiento (o decrecimiento) de las ventas de 2025 respecto a 2024 para cada uno.
+    """)
+
+    st.markdown("##### B. ¿Cómo modificarías el código para que solo muestre los clientes con crecimiento negativo?")
+    st.write("Para mostrar solo los clientes con **crecimiento negativo**, necesitamos filtrar el DataFrame basándonos en la columna 'Crecimiento (%)'.")
+    st.markdown("```python")
+    st.code("""
+import pandas as pd
+
+df = pd.DataFrame({
+ 'Cliente': ['A', 'B', 'C', 'D'],
+ 'Ventas_2024': [100000, 150000, 120000, 130000],
+ 'Ventas_2025': [130000, 160000, 140000, 125000]
+})
+
+df['Crecimiento (%)'] = ((df['Ventas_2025'] - df['Ventas_2024']) / df['Ventas_2024']) * 100
+
+# Modificación: Filtrar el DataFrame para mostrar solo clientes con crecimiento negativo
+df_crecimiento_negativo = df[df['Crecimiento (%)'] < 0]
+
+print(df_crecimiento_negativo)
+    """, language='python')
+    st.markdown("```")
+
+    st.markdown("##### Output del código modificado:")
+    df_python_modified = pd.DataFrame({
+     'Cliente': ['A', 'B', 'C', 'D'],
+     'Ventas_2024': [100000, 150000, 120000, 130000],
+     'Ventas_2025': [130000, 160000, 140000, 125000]
+    })
+    df_python_modified['Crecimiento (%)'] = ((df_python_modified['Ventas_2025'] - df_python_modified['Ventas_2024']) /
+    df_python_modified['Ventas_2024']) * 100
+    df_crecimiento_negativo = df_python_modified[df_python_modified['Crecimiento (%)'] < 0]
+    st.dataframe(df_crecimiento_negativo)
+
+    st.markdown("""
+    **Explicación de la modificación:**
+    * **`df[df['Crecimiento (%)'] < 0]`**: Esta línea utiliza la **indexación booleana** de pandas. Crea una serie de valores `True`/`False` donde `True` indica que el crecimiento es negativo. Al pasar esta serie al DataFrame, solo se seleccionan las filas donde la condición es `True`, es decir, solo los clientes con crecimiento negativo. El resultado se guarda en un nuevo DataFrame llamado `df_crecimiento_negativo`.
+    """)
+
+
+# --- SECTION: 5. PENSAMIENTO ESTRATÉGICO (DATA SOURCES) ---
+elif section == "5. Pensamiento Estratégico (Data Sources)":
+    st.header("5. Pensamiento Estratégico: Data Sources")
+    st.write("Una cadena hotelera desea medir la trazabilidad de leads desde la Etapa 1 (Salesforce) hasta la Etapa 3 (ERP - Check-in/Facturación).")
+
+    st.subheader("A. Repositorio de Datos Propuesto y Herramientas")
+
+    st.markdown("""
+    Para medir la trazabilidad de leads a través de múltiples sistemas (Salesforce, Sitio Web de Reservas, ERP), propondría un **Data Warehouse (DWH)** como repositorio central. Un DWH está optimizado para consultas analíticas y el reporting, y permitiría consolidar datos históricos de las diferentes etapas del ciclo de vida del cliente.
+
+    ### Descripción del Repositorio de Datos (Data Warehouse)
+
+    El DWH estaría diseñado con un **esquema en estrella o copo de nieve** para facilitar la consulta. Tendría las siguientes tablas principales:
+
+    * **Tabla de Hechos (Fact Table):**
+        * **`Fact_Trazabilidad_Lead`**: Contendría métricas clave y las claves foráneas a las tablas de dimensión.
+            * `ID_OPORTUNIDAD` (de Salesforce)
+            * `ID_RESERVA` (del Sitio Web)
+            * `ID_FACTURACION` (del ERP)
+            * `Fecha_Creacion_Lead_SK` (Clave de fecha)
+            * `Fecha_Reserva_SK` (Clave de fecha)
+            * `Fecha_Checkin_SK` (Clave de fecha)
+            * `Monto_Oportunidad`
+            * `Monto_Reserva`
+            * `Monto_Facturado`
+            * `Estado_Lead` (Ej: 'Calificado', 'Reservado', 'Facturado', 'Perdido')
+            * Métricas de tiempo de transición entre etapas (Ej: `Dias_Lead_a_Reserva`, `Dias_Reserva_a_Checkin`)
+
+    * **Tablas de Dimensión (Dimension Tables):**
+        * **`Dim_Cliente`**: Detalles del cliente (ID, Nombre, Contacto, País, etc.).
+        * **`Dim_Fecha`**: Una tabla de calendario con atributos de fecha (Año, Mes, Día, Trimestre, Día de la Semana, etc.).
+        * **`Dim_Canal`**: Origen del lead (Ej: 'Orgánico', 'Pago', 'Referido').
+        * **`Dim_Producto`**: Información sobre los productos/servicios reservados.
+        * **`Dim_Propiedad_Hotel`**: Detalles de los hoteles (Nombre, Ubicación, Categoría).
+
+    ---
+    ### Propuesta de Herramientas
+
+    1.  **Almacenamiento (Data Warehouse):**
+        * **Opción 1 (Cloud): Google BigQuery, Amazon Redshift, Snowflake, Azure Synapse Analytics.**
+            * **Ventajas:** Escalabilidad ilimitada, rendimiento optimizado para analítica, mantenimiento reducido, integración nativa con otros servicios en la nube.
+            * **Por qué:** Son soluciones modernas, costo-efectivas para grandes volúmenes de datos y cargas de trabajo analíticas.
+        * **Opción 2 (On-premise/Managed): PostgreSQL, SQL Server.**
+            * **Ventajas:** Control total sobre la infraestructura, familiaridad para equipos con experiencia en bases de datos relacionales.
+            * **Consideraciones:** Requiere más gestión de infraestructura y escalabilidad manual.
+
+        * **Recomendación:** Para una cadena hotelera que busca escalabilidad y agilidad, una solución **Cloud Data Warehouse** como **Google BigQuery** o **Snowflake** sería ideal por su capacidad de manejar grandes volúmenes de datos de forma eficiente para fines analíticos.
+
+    2.  **Integración (ETL/ELT):**
+        * **Opción 1 (Cloud Native): Google Cloud Dataflow, AWS Glue, Azure Data Factory.**
+            * **Ventajas:** Integración profunda con los respectivos ecosistemas cloud, escalabilidad automática, serverless.
+        * **Opción 2 (Third-party iPaaS/ETL): Talend, Apache Airflow, Fivetran, Stitch.**
+            * **Ventajas:** Conectores pre-construidos para sistemas como Salesforce y Oracle, orquestación de flujos de trabajo complejos, monitoreo.
+            * **Por qué:** Permiten automatizar la extracción, transformación y carga (ETL) de datos desde Salesforce, Oracle (Sitio Web de Reservas) y el ERP hacia el Data Warehouse.
+        * **Recomendación:** Una combinación de **Fivetran/Stitch** (para la extracción y carga inicial de datos de los sistemas SaaS como Salesforce) y **Apache Airflow** (para orquestar transformaciones más complejas dentro del DWH y monitorear los flujos) sería muy robusta.
+
+    3.  **Visualización (Business Intelligence - BI):**
+        * **Opción 1 (Líderes de Mercado): Tableau, Power BI, Looker (Google Looker Studio).**
+            * **Ventajas:** Dashboards interactivos, conectividad a múltiples fuentes de datos (incluido el DWH), capacidades avanzadas de visualización y drill-down.
+            * **Por qué:** Estas herramientas son excelentes para crear el **Dashboard Ejecutivo** que la gerencia requiere para medir la trazabilidad de leads. Permiten a los usuarios de negocio explorar los datos sin depender del equipo técnico.
+        * **Recomendación:** **Looker Studio** (anteriormente Google Data Studio) si el DWH es BigQuery, o **Tableau/Power BI** por su amplia adopción y capacidades.
+
+    4.  **Análisis Predictivo/Prescriptivo:**
+        * **Opción 1 (Plataformas ML): Google Cloud AI Platform, AWS SageMaker, Azure Machine Learning.**
+            * **Ventajas:** Entornos completos para el ciclo de vida del ML (preparación de datos, entrenamiento, despliegue, monitoreo de modelos), integración con el DWH.
+            * **Por qué:** Una vez que los datos de trazabilidad estén en el DWH, se pueden usar para construir modelos que:
+                * **Predigan:** La probabilidad de que un lead se convierta en reserva o check-in.
+                * **Prescriban:** Recomendaciones para mejorar las tasas de conversión en diferentes etapas (ej: cuándo intervenir con un lead, qué tipo de ofertas ofrecer).
+        * **Recomendación:** Si ya están en Google Cloud, **Google Cloud AI Platform** ofrece una suite completa. Para equipos con experiencia en Python, **Jupyter Notebooks** integrados con el DWH son un excelente punto de partida para el desarrollo de modelos, y luego se despliegan en estas plataformas.
+
+    ### Flujo de Datos General
+
+    **Sistemas Fuente** (Salesforce, Oracle Web, ERP)
+    $\downarrow$ (Conectores/Integración ETL/ELT - Fivetran/Stitch/Airflow)
+    **Data Lake** (Opcional, para datos crudos/estructurados - Cloud Storage)
+    $\downarrow$ (Transformación - SQL en DWH o Dataflow)
+    **Data Warehouse** (Google BigQuery / Snowflake - Datos limpios, estructurados, modelados)
+    $\downarrow$ (Conexión Directa)
+    **Herramientas de BI** (Tableau/Power BI/Looker Studio - Dashboards ejecutivos, reportes)
+    $\downarrow$ (Conexión a DWH)
+    **Plataformas de ML** (Google Cloud AI Platform - Modelos predictivos/prescriptivos)
+
+    Este enfoque asegura una **única fuente de verdad** para los datos, facilita la trazabilidad y permite análisis avanzados.
+    """)
