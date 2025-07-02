@@ -1007,5 +1007,3 @@ elif section == "6. Análisis de Escenarios y Recomendaciones":
     * **Programas de fidelización corporativos:** Implementar programas de lealtad diseñados específicamente para empresas, ofreciendo tarifas preferenciales, beneficios exclusivos para sus empleados o espacios para eventos.
     * **Canales de venta directa B2B:** Fortalecer los canales de venta directa a empresas, asignando ejecutivos de cuenta que gestionen las relaciones y comprendan las necesidades específicas del sector corporativo (ej. viajes de negocios, eventos, capacitaciones).
     """)
-
-````
