@@ -736,14 +736,14 @@ elif section == "6. Análisis de Escenarios y Recomendaciones":
     * **Marketing estratégico para destinos netos:** Dirigir campañas de marketing a los destinos con mayor `Ingreso_Neto`, incluso si su `Ingreso Total` no es el más alto, ya que son más rentables para el negocio.
     """)
 
-    st.markdown("---")
+st.markdown("---")
     st.subheader("6.3. Escenario 3: Impacto de la Estacionalidad en Ingresos y Room Nights")
     st.write("Analizar las tendencias mensuales para entender la estacionalidad en ingresos y noches de habitación, crucial para la planificación operativa y de marketing.")
     
     # Analysis
     df_monthly_trends = df_transformed.groupby('Mes Nombre Facturacion').agg(
         Ingreso_Total=('Ingreso Total', 'sum'),
-        Room_Nights=('Room Nights', 'sum')
+        Room_Nights=('# Room Nights', 'sum') # CORRECTED: Changed 'Room_Nights' to '# Room Nights'
     ).reset_index()
 
     # Order months correctly for plotting
