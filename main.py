@@ -54,7 +54,48 @@ if df is not None:
         st.write("Columnas con valores vacíos:")
         st.write(missing_values.index.tolist())
 
-    st.header("4. Proceso Básico de Limpieza de Datos")
+    ---
+
+    st.header("4. Opciones de Respuesta para Variables Categóricas")
+    st.write("Identificando columnas categóricas y sus valores únicos.")
+
+    # Define a threshold for what we consider "categorical" based on unique values
+    # You can adjust this threshold (e.g., 20, 50, 100) based on your dataset's characteristics
+    UNIQUE_VALUES_THRESHOLD = 50 
+
+    categorical_cols = []
+    
+    # Iterate through columns to identify potential categorical ones
+    for col in df.columns:
+        # Check if the column type is 'object' (often strings) or 'category'
+        if df[col].dtype == 'object' or pd.api.types.is_categorical_dtype(df[col]):
+            num_unique = df[col].nunique()
+            # If the number of unique values is below the threshold, consider it categorical
+            if 1 < num_unique <= UNIQUE_VALUES_THRESHOLD: # Must have more than 1 unique value
+                categorical_cols.append(col)
+            elif num_unique <= 1: # Column with 0 or 1 unique value might not be informative categorical
+                st.info(f"La columna '{col}' tiene {num_unique} valor(es) único(s) y no se considera categórica para este análisis.")
+            else: # Too many unique values for a typical categorical column
+                st.info(f"La columna '{col}' es de tipo objeto pero tiene {num_unique} valores únicos (posiblemente texto libre o ID). No se muestra su listado de opciones aquí.")
+        # Optionally, you could also check integer columns if they represent categories
+        # elif df[col].dtype == 'int64' and df[col].nunique() <= UNIQUE_VALUES_THRESHOLD:
+        #    categorical_cols.append(col)
+
+    if not categorical_cols:
+        st.warning("No se encontraron columnas categóricas basadas en los criterios definidos (tipo de dato 'object'/'category' y menos de 50 valores únicos).")
+    else:
+        st.write("Las siguientes columnas fueron identificadas como categóricas y sus opciones de respuesta son:")
+        for col in categorical_cols:
+            st.subheader(f"Columna: **{col}**")
+            # Get unique values and sort them for better readability
+            options = df[col].dropna().unique().tolist() # .dropna() to exclude NaN from options
+            options.sort() # Sort the options alphabetically/numerically
+            st.write(options)
+            st.write(f"Número de opciones únicas: **{len(options)}**")
+
+    ---
+
+    st.header("5. Proceso Básico de Limpieza de Datos")
     st.write("A continuación, se muestra un ejemplo básico de limpieza de datos.")
     st.write("Se creará una copia del DataFrame para aplicar la limpieza.")
 
