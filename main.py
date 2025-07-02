@@ -1,34 +1,3 @@
-You're absolutely right to point that out\! It seems like some of the plots and dataframes in scenarios 6.3 and 6.4 are appearing empty, which shouldn't be the case given the data.
-
-Let's troubleshoot this. The most common reason for empty plots or dataframes when the code *looks* correct is that the **`df_transformed` DataFrame, after all the filtering and transformations, might not contain the expected data** for those specific scenarios.
-
-Given the code you provided, the most likely culprits for empty visuals in 6.3 and 6.4 are:
-
-### **For Scenario 6.3: Impacto de la Estacionalidad en Ingresos y Room Nights**
-
-The issue here is almost certainly related to the **`Mes Nombre Facturacion` column**. While the correction for `# Room Nights` was good, the categorization of months might be causing a problem if some month names aren't present in the data, or if there's a mix of languages (e.g., 'January' instead of 'Enero').
-
-Let's refine how `Mes Nombre Facturacion` is created to ensure it's always consistent and correctly categorized for plotting.
-
-### **For Scenario 6.4: Rendimiento de Agencias de Viaje vs. Directo**
-
-This scenario relies on filtering `Tipo Cliente` for `'Agencias de Viaje'` and `'Cliente Final'`. If these exact strings are not present in your `Tipo Cliente` column, the `df_filtered` will be empty, leading to empty visualizations. We need to **verify the exact values in the `Tipo Cliente` column**.
-
------
-
-### Proposed Fixes and Code Adjustments:
-
-Here's how to adjust the relevant parts of your code to ensure these scenarios display correctly. I'll provide the complete revised code for scenarios 6.3 and 6.4.
-
-**1. Ensure correct month names in Scenario 6.3:**
-We'll explicitly use the `dt.strftime('%B')` method, which gives the full locale-specific month name. It's crucial that your environment's locale is set to Spanish for this to consistently produce "Enero", "Febrero", etc. If not, you might need a custom mapping. For now, assuming a Spanish locale is sufficient.
-
-**2. Verify `Tipo Cliente` values in Scenario 6.4:**
-I'll add a small check to see what unique values are actually in `Tipo Cliente` to help debug if the issue persists after the change. This will confirm the exact strings you should be filtering on.
-
------
-
-````python
 import streamlit as st
 import pandas as pd
 import requests
