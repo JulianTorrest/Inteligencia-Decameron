@@ -6,6 +6,15 @@ import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
 import locale
+import random # For synthetic data
+
+# Machine Learning Libraries
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, confusion_matrix, classification_report
+import seaborn as sns
+import matplotlib.pyplot as plt
 
 # Set locale for consistent month names (e.g., 'Enero', 'Febrero')
 try:
@@ -50,7 +59,8 @@ section = st.sidebar.radio("Ir a la Sección:",
                             "3. Dashboard Ejecutivo",
                             "4. Pensamiento Analítico (SQL & Python)",
                             "5. Pensamiento Estratégico (Data Sources)",
-                            "6. Análisis de Escenarios y Recomendaciones"])
+                            "6. Análisis de Escenarios y Recomendaciones",
+                            "7. Modelos de Machine Learning"]) # New ML Section
 
 # --- Data Loading and Initial Preparation (Common to all sections) ---
 st.write(f"Cargando archivo desde: [{GITHUB_EXCEL_URL}]({GITHUB_EXCEL_URL})")
@@ -157,6 +167,28 @@ def load_and_prepare_data(url, fx_df_param):
         else:
             st.session_state['estimated_monthly_budget_2025'] = np.zeros(12)
             st.session_state['budget_2025_total'] = 0
+
+        # --- Add Synthetic Cancellation Data for ML Demo ---
+        np.random.seed(42) # for reproducibility
+        df['Es Cancelacion'] = 0 # Default to not cancelled
+
+        # Simulate a base cancellation rate (e.g., 8%)
+        num_cancellations = int(len(df) * 0.08)
+        cancellation_indices = np.random.choice(df.index, num_cancellations, replace=False)
+        df.loc[cancellation_indices, 'Es Cancelacion'] = 1
+
+        # Introduce a slight bias: Higher cancellation for 'Agencia' and 'Corporativo' clients
+        # (This is purely for demonstration of feature influence)
+        agency_corp_mask = df['Tipo Cliente'].isin(['Agencia', 'Corporativo'])
+        num_agency_corp_cancellations = int(agency_corp_mask.sum() * 0.05) # Additional 5% for these
+        
+        # Select from agency/corp clients who are NOT already marked as cancelled
+        eligible_for_extra_cancel = df[agency_corp_mask & (df['Es Cancelacion'] == 0)].index
+        if len(eligible_for_extra_cancel) > num_agency_corp_cancellations:
+            extra_cancellation_indices = np.random.choice(eligible_for_extra_cancel, num_agency_corp_cancellations, replace=False)
+            df.loc[extra_cancellation_indices, 'Es Cancelacion'] = 1
+        # --- End Synthetic Cancellation Data ---
+
 
         return df
 
@@ -940,3 +972,200 @@ elif section == "6. Análisis de Escenarios y Recomendaciones":
     * **Programas de fidelización corporativos:** Implementar programas de lealtad diseñados específicamente para empresas, ofreciendo tarifas preferenciales, beneficios exclusivos para sus empleados o espacios para eventos.
     * **Canales de venta directa B2B:** Fortalecer los canales de venta directa a empresas, asignando ejecutivos de cuenta que gestionen las relaciones y comprendan las necesidades específicas del sector corporativo (ej. viajes de negocios, eventos, capacitaciones).
     """)
+
+# --- NEW SECTION: 7. MODELOS DE MACHINE LEARNING ---
+elif section == "7. Modelos de Machine Learning":
+    st.header("7. Modelos de Machine Learning")
+    st.write("Esta sección demuestra la aplicación de modelos de Machine Learning para predicción de ingresos y riesgo de cancelación.")
+
+    st.info("""
+        **Nota Importante sobre los Datos de Cancelación:**
+        El dataset original no contiene una columna explícita de `Estado_Cancelacion`.
+        Para esta demostración, se ha **creado una columna sintética `Es Cancelacion`** (0 = No Cancelado, 1 = Cancelado)
+        durante la fase de carga y preparación de datos. Esto permite ilustrar cómo se entrenaría y evaluaría un modelo de clasificación para el riesgo de cancelación.
+        En un escenario real, esta columna provendría de tus sistemas transaccionales.
+        """)
+
+    # --- Data Preparation for ML Models ---
+    st.subheader("7.1. Preparación de Datos para Modelos ML")
+    st.write("Se seleccionan las características (features) y la variable objetivo (target). Las variables categóricas se convierten a formato numérico usando One-Hot Encoding.")
+
+    # Select features for both models
+    # Common features for both
+    numerical_features = ['# Room Nights', 'Numero Adultos', 'Numero Ninos', 'Valor Total', 'Comision']
+    categorical_features = ['Tipo Cliente', 'Plan', 'Destino', 'Pais', 'Mes Facturacion']
+
+    # Ensure all selected columns exist and handle potential NaNs (though pre-processing handles most)
+    available_cols = df_transformed.columns.tolist()
+    
+    # Filter numerical features to only include those present in the DataFrame
+    numerical_features = [f for f in numerical_features if f in available_cols]
+    
+    # Filter categorical features to only include those present in the DataFrame
+    categorical_features = [f for f in categorical_features if f in available_cols]
+
+    # Drop rows with NaN in critical numerical features for ML if any remain
+    df_ml = df_transformed.dropna(subset=numerical_features + ['Ingreso Total', 'Es Cancelacion']).copy()
+    
+    if df_ml.empty:
+        st.warning("No hay suficientes datos limpios para entrenar los modelos de ML. Por favor, revisa tus datos.")
+    else:
+        # Apply One-Hot Encoding for categorical features
+        try:
+            df_ml_encoded = pd.get_dummies(df_ml, columns=categorical_features, drop_first=True)
+            # Ensure 'Mercado' is included for classification if it's not already in categorical_features
+            if 'Mercado' in available_cols and 'Mercado' not in categorical_features:
+                df_ml_encoded = pd.get_dummies(df_ml_encoded, columns=['Mercado'], drop_first=True)
+
+            st.write(f"DataFrame después de One-Hot Encoding. Dimensiones: {df_ml_encoded.shape}")
+            st.dataframe(df_ml_encoded.head())
+        except Exception as e:
+            st.error(f"Error durante el One-Hot Encoding: {e}")
+            st.stop()
+
+
+        st.markdown("---")
+        st.subheader("7.2. Modelo de Regresión: Predicción del Ingreso Total")
+
+        if 'Ingreso Total' in df_ml_encoded.columns and all(f in df_ml_encoded.columns for f in numerical_features) and len(df_ml_encoded.columns) > len(numerical_features):
+            # Define features (X) and target (y)
+            X_reg = df_ml_encoded[[col for col in df_ml_encoded.columns if col != 'Ingreso Total' and col != 'Es Cancelacion' and col not in df_ml.columns.difference(numerical_features + categorical_features + ['Es Cancelacion', 'Ingreso Total'])]]
+            y_reg = df_ml_encoded['Ingreso Total']
+
+            # Check for columns with all zeros after encoding which can cause issues
+            X_reg = X_reg.loc[:, (X_reg != 0).any(axis=0)]
+            if X_reg.empty:
+                st.warning("No hay suficientes características válidas después de la codificación para el modelo de regresión.")
+            else:
+                # Split data
+                X_train_reg, X_test_reg, y_train_reg, y_test_reg = train_test_split(X_reg, y_reg, test_size=0.2, random_state=42)
+
+                st.write(f"Dimensiones del conjunto de entrenamiento (Regresión): {X_train_reg.shape}")
+                st.write(f"Dimensiones del conjunto de prueba (Regresión): {X_test_reg.shape}")
+
+                # Train the model
+                reg_model = RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1)
+                reg_model.fit(X_train_reg, y_train_reg)
+
+                # Make predictions
+                y_pred_reg = reg_model.predict(X_test_reg)
+
+                # Evaluate the model
+                mae = mean_absolute_error(y_test_reg, y_pred_reg)
+                rmse = np.sqrt(mean_squared_error(y_test_reg, y_pred_reg))
+                r2 = r2_score(y_test_reg, y_pred_reg)
+
+                st.markdown("#### Métricas del Modelo de Regresión:")
+                st.write(f"**Mean Absolute Error (MAE):** ${mae:,.2f}")
+                st.write(f"**Root Mean Squared Error (RMSE):** ${rmse:,.2f}")
+                st.write(f"**R-squared ($R^2$):** {r2:.4f}")
+
+                # Feature Importance
+                feature_importance_reg = pd.DataFrame({
+                    'Feature': X_reg.columns,
+                    'Importance': reg_model.feature_importances_
+                }).sort_values(by='Importance', ascending=False)
+
+                st.markdown("#### Importancia de las Características (Regresión):")
+                fig_feature_imp_reg = px.bar(
+                    feature_importance_reg.head(10), # Show top 10
+                    x='Importance',
+                    y='Feature',
+                    orientation='h',
+                    title='Top 10 Características más Importantes para la Predicción de Ingresos',
+                    labels={'Importance': 'Importancia', 'Feature': 'Característica'}
+                )
+                fig_feature_imp_reg.update_layout(yaxis={'categoryorder':'total ascending'})
+                st.plotly_chart(fig_feature_imp_reg, use_container_width=True)
+
+                # Actual vs Predicted Plot
+                fig_actual_pred_reg = px.scatter(
+                    x=y_test_reg,
+                    y=y_pred_reg,
+                    labels={'x': 'Ingreso Total Real ($)', 'y': 'Ingreso Total Predicho ($)'},
+                    title='Ingreso Total Real vs. Predicho (Regresión)'
+                )
+                fig_actual_pred_reg.add_trace(go.Scatter(x=[y_test_reg.min(), y_test_reg.max()], y=[y_test_reg.min(), y_test_reg.max()], mode='lines', name='Línea Y=X'))
+                st.plotly_chart(fig_actual_pred_reg, use_container_width=True)
+        else:
+            st.warning("No se pueden entrenar el modelo de regresión. Asegúrate de que las columnas 'Ingreso Total' y las características numéricas/categóricas seleccionadas existan y no estén vacías después de la codificación.")
+
+
+        st.markdown("---")
+        st.subheader("7.3. Modelo de Clasificación: Predicción del Riesgo de Cancelación (Sintético)")
+
+        if 'Es Cancelacion' in df_ml_encoded.columns and all(f in df_ml_encoded.columns for f in numerical_features) and len(df_ml_encoded.columns) > len(numerical_features):
+            # Define features (X) and target (y)
+            X_clf = df_ml_encoded[[col for col in df_ml_encoded.columns if col != 'Es Cancelacion' and col != 'Ingreso Total' and col not in df_ml.columns.difference(numerical_features + categorical_features + ['Es Cancelacion', 'Ingreso Total'])]]
+            y_clf = df_ml_encoded['Es Cancelacion']
+
+            # Check for columns with all zeros after encoding which can cause issues
+            X_clf = X_clf.loc[:, (X_clf != 0).any(axis=0)]
+            if X_clf.empty:
+                st.warning("No hay suficientes características válidas después de la codificación para el modelo de clasificación.")
+            else:
+                # Split data
+                X_train_clf, X_test_clf, y_train_clf, y_test_clf = train_test_split(X_clf, y_clf, test_size=0.2, random_state=42, stratify=y_clf) # Stratify to maintain class balance
+
+                st.write(f"Dimensiones del conjunto de entrenamiento (Clasificación): {X_train_clf.shape}")
+                st.write(f"Dimensiones del conjunto de prueba (Clasificación): {X_test_clf.shape}")
+
+                # Train the model
+                clf_model = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1, class_weight='balanced') # Use class_weight for synthetic imbalance
+                clf_model.fit(X_train_clf, y_train_clf)
+
+                # Make predictions
+                y_pred_clf = clf_model.predict(X_test_clf)
+                y_proba_clf = clf_model.predict_proba(X_test_clf)[:, 1] # Probability of being class 1 (cancelled)
+
+                # Evaluate the model
+                accuracy = accuracy_score(y_test_clf, y_pred_clf)
+                precision = precision_score(y_test_clf, y_pred_clf, zero_division=0)
+                recall = recall_score(y_test_clf, y_pred_clf, zero_division=0)
+                f1 = f1_score(y_test_clf, y_pred_clf, zero_division=0)
+                try:
+                    roc_auc = roc_auc_score(y_test_clf, y_proba_clf)
+                except ValueError:
+                    roc_auc = "N/A (Solo una clase en y_true o y_score)"
+
+                st.markdown("#### Métricas del Modelo de Clasificación:")
+                st.write(f"**Accuracy:** {accuracy:.4f}")
+                st.write(f"**Precision:** {precision:.4f}")
+                st.write(f"**Recall:** {recall:.4f}")
+                st.write(f"**F1-Score:** {f1:.4f}")
+                st.write(f"**ROC AUC:** {roc_auc:.4f}")
+
+                st.markdown("#### Reporte de Clasificación:")
+                st.text(classification_report(y_test_clf, y_pred_clf, zero_division=0))
+
+                st.markdown("#### Matriz de Confusión:")
+                cm = confusion_matrix(y_test_clf, y_pred_clf)
+                fig_cm, ax_cm = plt.subplots(figsize=(6, 4))
+                sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax_cm,
+                            xticklabels=['No Cancelado (Pred)', 'Cancelado (Pred)'],
+                            yticklabels=['No Cancelado (Real)', 'Cancelado (Real)'])
+                ax_cm.set_ylabel('Real')
+                ax_cm.set_xlabel('Predicción')
+                ax_cm.set_title('Matriz de Confusión')
+                st.pyplot(fig_cm)
+
+                # Feature Importance
+                feature_importance_clf = pd.DataFrame({
+                    'Feature': X_clf.columns,
+                    'Importance': clf_model.feature_importances_
+                }).sort_values(by='Importance', ascending=False)
+
+                st.markdown("#### Importancia de las Características (Clasificación):")
+                fig_feature_imp_clf = px.bar(
+                    feature_importance_clf.head(10), # Show top 10
+                    x='Importance',
+                    y='Feature',
+                    orientation='h',
+                    title='Top 10 Características más Importantes para la Predicción de Cancelación',
+                    labels={'Importance': 'Importancia', 'Feature': 'Característica'}
+                )
+                fig_feature_imp_clf.update_layout(yaxis={'categoryorder':'total ascending'})
+                st.plotly_chart(fig_feature_imp_clf, use_container_width=True)
+
+        else:
+            st.warning("No se pueden entrenar el modelo de clasificación. Asegúrate de que las columnas 'Es Cancelacion' y las características numéricas/categóricas seleccionadas existan y no estén vacías después de la codificación.")
